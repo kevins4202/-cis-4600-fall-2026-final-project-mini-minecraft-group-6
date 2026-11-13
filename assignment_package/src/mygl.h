@@ -37,6 +37,8 @@ private:
 
     void sendPlayerDataToGUI() const;
 
+    qint64 m_previousTime; // Need this for the time delta
+
 
 public:
     explicit MyGL(QWidget *parent = nullptr);

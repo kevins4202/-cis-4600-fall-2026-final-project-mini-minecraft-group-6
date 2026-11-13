@@ -16,13 +16,22 @@ void Player::tick(float dT, InputBundle &input) {
 }
 
 void Player::processInputs(InputBundle &inputs) {
-    // TODO: Update the Player's velocity and acceleration based on the
-    // state of the inputs.
+    m_acceleration = glm::vec3(0.f);
+    const float acceleration = 25.f;
+
+    if (inputs.wPressed) m_acceleration += acceleration * m_forward;
+    if (inputs.sPressed) m_acceleration -= acceleration * m_forward;
+    if (inputs.dPressed) m_acceleration += acceleration * m_right;
+    if (inputs.aPressed) m_acceleration -= acceleration * m_right;
+    if (inputs.ePressed) m_acceleration += acceleration * m_up;
+    if (inputs.qPressed) m_acceleration -= acceleration * m_up;
 }
 
 void Player::computePhysics(float dT, const Terrain &terrain) {
-    // TODO: Update the Player's position based on its acceleration
-    // and velocity, and also perform collision detection.
+    m_velocity *= 0.975f; // Drag for flying per tick
+    m_velocity += m_acceleration * dT;
+
+    moveAlongVector(m_velocity * dT);
 }
 
 void Player::setCameraWidthHeight(unsigned int w, unsigned int h) {
