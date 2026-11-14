@@ -4,7 +4,7 @@
 Player::Player(glm::vec3 pos, const Terrain &terrain)
     : Entity(pos), m_velocity(0,0,0), m_acceleration(0,0,0),
       m_camera(pos + glm::vec3(0, 1.5f, 0)), mcr_terrain(terrain),
-      mcr_camera(m_camera)
+      m_pitch(0.f), mcr_camera(m_camera)
 {}
 
 Player::~Player()
@@ -17,21 +17,82 @@ void Player::tick(float dT, InputBundle &input) {
 
 void Player::processInputs(InputBundle &inputs) {
     m_acceleration = glm::vec3(0.f);
+
+    m_flightMode = inputs.fPressed;
+
+    glm::vec3 forward = m_forward;
+    glm::vec3 right = m_right;
+
+    if (!m_flightMode) {
+        forward.y = 0;
+        right.y = 0;
+
+        if (glm::length(forward) > 0.0001f) {
+            forward = glm::normalize(forward);
+        } else {
+            forward = glm::vec3(0.f);
+        }
+
+        if (glm::length(right) > 0.0001f) {
+            right = glm::normalize(right);
+        } else {
+            right = glm::vec3(0.f);
+        }
+    }
+
+    // MOUSE MOVEMENT
+
+    const float sensitivity = 0.15f;
+
+    rotateOnUpGlobal(-inputs.mouseX * sensitivity);
+
+    float newPitch = glm::clamp(m_pitch - inputs.mouseY * sensitivity, -89.f, 89.f);
+
+    rotateOnRightLocal(newPitch - m_pitch);
+    m_pitch = newPitch;
+
+    // Consume and reset the movement
+    inputs.mouseX = 0.f;
+    inputs.mouseY = 0.f;
+
+    // /////////////
+
     const float acceleration = 25.f;
 
-    if (inputs.wPressed) m_acceleration += acceleration * m_forward;
-    if (inputs.sPressed) m_acceleration -= acceleration * m_forward;
-    if (inputs.dPressed) m_acceleration += acceleration * m_right;
-    if (inputs.aPressed) m_acceleration -= acceleration * m_right;
-    if (inputs.ePressed) m_acceleration += acceleration * m_up;
-    if (inputs.qPressed) m_acceleration -= acceleration * m_up;
+    if (inputs.wPressed) m_acceleration += acceleration * forward;
+    if (inputs.sPressed) m_acceleration -= acceleration * forward;
+    if (inputs.dPressed) m_acceleration += acceleration * right;
+    if (inputs.aPressed) m_acceleration -= acceleration * right;
+
+    // e and q don't function outside of flight mode
+    if (m_flightMode) {
+        if (inputs.ePressed) m_acceleration += acceleration * m_up;
+        if (inputs.qPressed) m_acceleration -= acceleration * m_up;
+    }
+
+    // When on the ground, and when space is pressed we can jump
+    if (!m_flightMode && inputs.spacePressed && m_grounded) {
+        m_velocity.y = 10.f;
+        m_grounded = false;
+    }
+
 }
 
 void Player::computePhysics(float dT, const Terrain &terrain) {
-    m_velocity *= 0.975f; // Drag for flying per tick
+    if (!m_flightMode) {
+        m_acceleration.y -= 25.f;
+    }
+
+    m_velocity *= std::exp(-3.f * dT);
     m_velocity += m_acceleration * dT;
 
-    moveAlongVector(m_velocity * dT);
+    glm::vec3 displacement = m_velocity * dT;
+
+    if (m_flightMode) {
+        m_grounded = false;
+        moveAlongVector(displacement);
+        return;
+    }
 }
 
 void Player::setCameraWidthHeight(unsigned int w, unsigned int h) {

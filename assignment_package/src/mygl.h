@@ -39,6 +39,11 @@ private:
 
     qint64 m_previousTime; // Need this for the time delta
 
+    // MOUSE POSITIONAL DATA
+
+    QPoint m_lastMousePos;
+    bool m_haveMousePos = false;
+
 
 public:
     explicit MyGL(QWidget *parent = nullptr);
@@ -70,6 +75,9 @@ protected:
     // Automatically invoked when the user
     // presses a mouse button
     void mousePressEvent(QMouseEvent *e) override;
+
+    // Prevents a jump if we aren't centered mousewise
+    void focusInEvent(QFocusEvent *e) override;
 
 private slots:
     void tick(); // Slot that gets called ~60 times per second by m_timer firing.

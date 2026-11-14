@@ -12,6 +12,12 @@ private:
     void processInputs(InputBundle &inputs);
     void computePhysics(float dT, const Terrain &terrain);
 
+    // Flag / Mode for touching floor or flight mode
+    bool m_flightMode;
+    bool m_grounded;
+
+    float m_pitch; // up / down viewing angle (DEGREES)
+
 public:
     // Readonly public reference to our camera
     // for easy access from MyGL

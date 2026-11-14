@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QDateTime>
+#include <QFocusEvent>
 
 
 MyGL::MyGL(QWidget *parent)
@@ -15,6 +16,10 @@ MyGL::MyGL(QWidget *parent)
 {
     // Connect the timer to a function so that when the timer ticks the function is executed
     connect(&m_timer, SIGNAL(timeout()), this, SLOT(tick()));
+
+    // Initial dT incorrect which leads to huge -y velocity
+    m_previousTime = QDateTime::currentMSecsSinceEpoch();
+
     // Tell the timer to redraw 60 times per second
     m_timer.start(16);
     setFocusPolicy(Qt::ClickFocus);
@@ -160,6 +165,8 @@ void MyGL::keyPressEvent(QKeyEvent *e) {
         m_inputs.ePressed = true;
     } else if (e->key() == Qt::Key_Space) {
         m_inputs.spacePressed = true;
+    } else if (e->key() == Qt::Key_F) {
+        m_inputs.flightMode = !m_inputs.fPressed;
     }
 }
 
@@ -186,9 +193,34 @@ void MyGL::keyReleaseEvent(QKeyEvent *e) {
 }
 
 void MyGL::mouseMoveEvent(QMouseEvent *e) {
-    // TODO
+    if (!hasFocus()) {
+        m_haveMousePos = false;
+        return;
+    }
+
+    QPoint current = e->pos();
+
+    if (!m_haveMousePos) {
+        m_lastMousePos = current;
+        m_haveMousePos = true;
+        return;
+    }
+
+    QPoint change = current - m_lastMousePos;
+    m_lastMousePos = current;
+
+    m_inputs.mouseX += change.x();
+    m_inputs.mouseY += change.y();
 }
 
 void MyGL::mousePressEvent(QMouseEvent *e) {
     // TODO
+}
+
+void MyGL::focusInEvent(QFocusEvent *e) {
+    OpenGLContext::focusInEvent(e);
+
+    m_inputs.mouseX = 0.f;
+    m_inputs.mouseY = 0.f;
+    moveMouseToCenter();
 }
