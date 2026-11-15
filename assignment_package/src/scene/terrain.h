@@ -14,6 +14,10 @@
 int64_t toKey(int x, int z);
 glm::ivec2 toCoords(int64_t k);
 
+int mountainHeight(int x, int z);
+int grasslandHeight(int x, int z);
+float biomeBlend(int x, int z);
+
 // The container class for all of the Chunks in the game.
 // Ultimately, while Terrain will always store all Chunks,
 // not all Chunks will be drawn at any given time as the world
@@ -81,4 +85,8 @@ public:
     // Initializes the Chunks that store the 64 x 256 x 64 block scene you
     // see when the base code is run.
     void CreateTestScene();
+
+    // Fills column at world (x, z) with procedurally generated
+    // blocks.
+    void generateColumn(int x, int z);
 };
