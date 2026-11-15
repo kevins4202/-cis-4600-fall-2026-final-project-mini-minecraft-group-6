@@ -1,5 +1,4 @@
 #include "terrain.h"
-#include "cube.h"
 #include "noise.h"
 #include <array>
 #include <stdexcept>
@@ -175,6 +174,7 @@ void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
 
     if(!hasChunkAt(chunkX, chunkZ)) {
         Chunk *currentChunk = instantiateChunkAt(chunkX, chunkZ);
+        generateChunk(chunkX, chunkZ);
         currentChunk->createVBOdata();
     }
 
@@ -197,6 +197,7 @@ void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
         if(candidate.distanceToEdge <= EXPANSION_DISTANCE &&
            !hasChunkAt(newChunkX, newChunkZ)) {
             Chunk *newChunk = instantiateChunkAt(newChunkX, newChunkZ);
+            generateChunk(newChunkX, newChunkZ);
             newChunk->createVBOdata();
         }
     }
@@ -232,6 +233,18 @@ void Terrain::CreateTestScene()
             generateColumn(x, z);
         }
     }
+
+    for(auto &chunk : m_chunks) {
+        chunk.second->createVBOdata();
+    }
+}
+
+void Terrain::generateChunk(int chunkX, int chunkZ) {
+    for(int x = 0; x < 16; ++x) {
+        for(int z = 0; z < 16; ++z) {
+            generateColumn(chunkX + x, chunkZ + z);
+        }
+    }
 }
 
 void Terrain::generateColumn(int x, int z) {
@@ -257,9 +270,5 @@ void Terrain::generateColumn(int x, int z) {
         if(getGlobalBlockAt(x, y, z) == EMPTY) {
             setGlobalBlockAt(x, y, z, WATER);
         }
-    }
-
-    for(auto &chunk : m_chunks) {
-        chunk.second->createVBOdata();
     }
 }

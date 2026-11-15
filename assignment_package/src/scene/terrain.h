@@ -89,4 +89,7 @@ public:
     // Fills column at world (x, z) with procedurally generated
     // blocks.
     void generateColumn(int x, int z);
+
+    // Fills every column of the Chunk whose corner is at (chunkX, chunkZ).
+    void generateChunk(int chunkX, int chunkZ);
 };
