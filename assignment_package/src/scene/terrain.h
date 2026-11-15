@@ -19,6 +19,16 @@ glm::ivec2 toCoords(int64_t k);
 // Ultimately, while Terrain will always store all Chunks,
 // not all Chunks will be drawn at any given time as the world
 // expands.
+
+// contains info about how far a ray travelled,
+// the coordinates of the block hit by the ray
+// and the surface normal of the surface that is hit
+struct RayHit {
+    float distance = 0.f;
+    glm::ivec3 block = glm::ivec3(0);
+    glm::ivec3 normal = glm::ivec3(0);
+};
+
 class Terrain {
 private:
     // Stores every Chunk according to the location of its lower-left corner
@@ -59,6 +69,9 @@ private:
 
     OpenGLContext* mp_context;
 
+    //
+    bool isSolidAt(const glm::ivec3 &cell) const;
+
 public:
     Terrain(OpenGLContext *context);
     ~Terrain();
@@ -93,4 +106,7 @@ public:
     // Initializes the Chunks that store the 64 x 256 x 64 block scene you
     // see when the base code is run.
     void CreateTestScene();
+
+    // grid march helper
+    bool gridMarch(glm::vec3 origin, glm::vec3 ray, RayHit &hit) const;
 };

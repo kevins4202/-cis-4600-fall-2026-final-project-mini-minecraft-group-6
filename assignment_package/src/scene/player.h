@@ -13,10 +13,12 @@ private:
     void computePhysics(float dT, const Terrain &terrain);
 
     // Flag / Mode for touching floor or flight mode
-    bool m_flightMode;
-    bool m_grounded;
+    bool m_flightMode = true;
+    bool m_grounded = false;
 
     float m_pitch; // up / down viewing angle (DEGREES)
+
+    float allowedMovementOnAxis(int axis, float amount, const Terrain &terrain, bool &collided) const;
 
 public:
     // Readonly public reference to our camera

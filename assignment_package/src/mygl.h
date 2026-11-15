@@ -76,8 +76,8 @@ protected:
     // presses a mouse button
     void mousePressEvent(QMouseEvent *e) override;
 
-    // Prevents a jump if we aren't centered mousewise
-    void focusInEvent(QFocusEvent *e) override;
+    // halt mouse movement attempt
+    void focusInEvent(QFocusEvent *event) override;
 
 private slots:
     void tick(); // Slot that gets called ~60 times per second by m_timer firing.

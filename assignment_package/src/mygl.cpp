@@ -12,7 +12,7 @@ MyGL::MyGL(QWidget *parent)
     : OpenGLContext(parent),
       m_worldAxes(this),
       m_progLambert(this), m_progFlat(this), m_progInstanced(this),
-      m_terrain(this), m_player(glm::vec3(48.f, 129.f, 48.f), m_terrain)
+      m_terrain(this), m_player(glm::vec3(40.f, 150.f, 40.f), m_terrain)
 {
     // Connect the timer to a function so that when the timer ticks the function is executed
     connect(&m_timer, SIGNAL(timeout()), this, SLOT(tick()));
@@ -147,7 +147,7 @@ void MyGL::renderTerrain() {
 
 
 void MyGL::keyPressEvent(QKeyEvent *e) {
-    // Case for holding on input or release?
+    if (e->isAutoRepeat()) return;
 
     if (e->key() == Qt::Key_Escape) {
         QApplication::quit();
@@ -166,12 +166,12 @@ void MyGL::keyPressEvent(QKeyEvent *e) {
     } else if (e->key() == Qt::Key_Space) {
         m_inputs.spacePressed = true;
     } else if (e->key() == Qt::Key_F) {
-        m_inputs.flightMode = !m_inputs.fPressed;
+        m_inputs.flightMode = !m_inputs.flightMode;
     }
 }
 
 void MyGL::keyReleaseEvent(QKeyEvent *e) {
-    // same here?
+    if (e->isAutoRepeat()) return;
 
     if (e->key() == Qt::Key_Escape) {
         QApplication::quit();
@@ -211,6 +211,8 @@ void MyGL::mouseMoveEvent(QMouseEvent *e) {
 
     m_inputs.mouseX += change.x();
     m_inputs.mouseY += change.y();
+
+    moveMouseToCenter();
 }
 
 void MyGL::mousePressEvent(QMouseEvent *e) {
