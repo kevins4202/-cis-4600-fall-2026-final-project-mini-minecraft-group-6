@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+static constexpr float HALF_WIDTH = 0.3f;
+
 Player::Player(glm::vec3 pos, const Terrain &terrain)
     : Entity(pos), m_velocity(0,0,0), m_acceleration(0,0,0),
       m_camera(pos + glm::vec3(0, 1.5f, 0)), mcr_terrain(terrain),
@@ -225,9 +227,9 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
     // clip into walls
     ray[axis] = sign * (allowed + EPS);
 
-    const float xs[] = {-0.5f + EPS, 0.5f - EPS};
     const float ys[] = {EPS, 1.f, 2.f - EPS};
-    const float zs[] = {-0.5f + EPS, 0.5f - EPS};
+    const float xs[] = {-HALF_WIDTH + EPS, HALF_WIDTH - EPS};
+    const float zs[] = {-HALF_WIDTH + EPS, HALF_WIDTH - EPS};
 
     for (float x : xs) {
         for (float y : ys) {
@@ -239,8 +241,7 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
                     origin.y = m_position.y
                                + (sign > 0.f ? 2.f : 0.f);
                 } else {
-                    origin[axis] =
-                        m_position[axis] + sign * 0.5f;
+                    origin[axis] = m_position[axis] + sign * HALF_WIDTH;
                 }
 
                 RayHit hit;
@@ -268,9 +269,9 @@ bool Player::getTargetBlock(RayHit &hit) const
 
 bool Player::overlapsBlock(const glm::ivec3 &block) const
 {
-    const glm::vec3 playerMin = m_position + glm::vec3(-0.5f, 0.f, -0.5f);
+    const glm::vec3 playerMin = m_position + glm::vec3(-HALF_WIDTH, 0.f, -HALF_WIDTH);
 
-    const glm::vec3 playerMax = m_position + glm::vec3(0.5f, 2.f, 0.5f);
+    const glm::vec3 playerMax = m_position + glm::vec3(HALF_WIDTH, 2.f, HALF_WIDTH);
 
     const glm::vec3 blockMin = glm::vec3(block);
     const glm::vec3 blockMax = blockMin + glm::vec3(1.f);

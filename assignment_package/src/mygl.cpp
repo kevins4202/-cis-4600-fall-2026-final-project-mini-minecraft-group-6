@@ -1,3 +1,9 @@
+#include <QtGlobal>
+
+#ifdef Q_OS_MACOS
+#include <CoreGraphics/CoreGraphics.h>
+#endif
+
 #include "mygl.h"
 #include <glm_includes.h>
 
@@ -43,8 +49,22 @@ MyGL::~MyGL() {
 }
 
 
-void MyGL::moveMouseToCenter() {
-    QCursor::setPos(this->mapToGlobal(QPoint(width() / 2, height() / 2)));
+void MyGL::moveMouseToCenter()
+{
+    if (!hasFocus() || !isActiveWindow()) return;
+
+    const QPoint target =
+        mapToGlobal(QPoint(width() / 2, height() / 2));
+
+#ifdef Q_OS_MACOS
+    // Apple documents this for game cursor recentering
+    const CGError warpResult = CGWarpMouseCursorPosition(CGPointMake(target.x(), target.y()));
+
+    // SDL uses this after warping to avoid a movement delay
+    const CGError associateResult = CGAssociateMouseAndMouseCursorPosition(true);
+#else
+    QCursor::setPos(target);
+#endif
 }
 
 void MyGL::initializeGL()
@@ -205,25 +225,21 @@ void MyGL::keyReleaseEvent(QKeyEvent *e) {
     }
 }
 
-void MyGL::mouseMoveEvent(QMouseEvent *e) {
-    if (!hasFocus()) {
-        m_haveMousePos = false;
-        return;
-    }
+void MyGL::mouseMoveEvent(QMouseEvent *e)
+{
+    if (!hasFocus() || !isActiveWindow()) return;
 
-    QPoint current = e->pos();
+    const QPoint center(width() / 2, height() / 2);
 
-    if (!m_haveMousePos) {
-        m_lastMousePos = current;
-        m_haveMousePos = true;
-        return;
-    }
+    // Movement since the cursor was last centered
+    const QPointF delta =
+        e->position() - QPointF(center);
 
-    QPoint change = current - m_lastMousePos;
-    m_lastMousePos = current;
+    // Ignore events at the center.
+    if (delta.isNull()) return;
 
-    m_inputs.mouseX += change.x();
-    m_inputs.mouseY += change.y();
+    m_inputs.mouseX += float(delta.x());
+    m_inputs.mouseY += float(delta.y());
 
     moveMouseToCenter();
 }
