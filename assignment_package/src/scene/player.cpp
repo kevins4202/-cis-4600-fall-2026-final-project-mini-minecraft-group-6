@@ -58,9 +58,7 @@ void Player::processInputs(InputBundle &inputs) {
     inputs.mouseX = 0.f;
     inputs.mouseY = 0.f;
 
-    // /////////////
-
-    const float acceleration = 25.f;
+    const float acceleration = m_flightMode ? 25.f : 60.f;
 
     if (inputs.wPressed) m_acceleration += acceleration * forward;
     if (inputs.sPressed) m_acceleration -= acceleration * forward;
@@ -86,6 +84,13 @@ void Player::computePhysics(float dT, const Terrain &terrain) {
         m_acceleration.y -= 25.f;
     }
 
+    const float horizontalDrag = m_flightMode ? 3.f : 10.f;
+
+    const float horizontalDamping =
+        std::exp(-horizontalDrag * dT);
+
+    m_velocity.x *= horizontalDamping;
+    m_velocity.z *= horizontalDamping;
     m_velocity.y *= std::exp(-3.f * dT);
 
     m_velocity += m_acceleration * dT;
@@ -252,4 +257,28 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
     }
 
     return sign * allowed;
+}
+
+// Break / place
+
+bool Player::getTargetBlock(RayHit &hit) const
+{
+    return mcr_terrain.gridMarch(m_camera.mcr_position, glm::normalize(m_forward) * 3.f, hit);
+}
+
+bool Player::overlapsBlock(const glm::ivec3 &block) const
+{
+    const glm::vec3 playerMin = m_position + glm::vec3(-0.5f, 0.f, -0.5f);
+
+    const glm::vec3 playerMax = m_position + glm::vec3(0.5f, 2.f, 0.5f);
+
+    const glm::vec3 blockMin = glm::vec3(block);
+    const glm::vec3 blockMax = blockMin + glm::vec3(1.f);
+
+    return playerMin.x < blockMax.x
+           && playerMax.x > blockMin.x
+           && playerMin.y < blockMax.y
+           && playerMax.y > blockMin.y
+           && playerMin.z < blockMax.z
+           && playerMax.z > blockMin.z;
 }

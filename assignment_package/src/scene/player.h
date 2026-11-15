@@ -55,4 +55,8 @@ public:
     QString velAsQString() const;
     QString accAsQString() const;
     QString lookAsQString() const;
+
+    // Break / place
+    bool getTargetBlock(RayHit &hit) const;
+    bool overlapsBlock(const glm::ivec3 &block) const;
 };

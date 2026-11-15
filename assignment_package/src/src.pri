@@ -19,6 +19,7 @@ SOURCES += \
     $$PWD/scene/chunk.cpp
 
 HEADERS += \
+    $$PWD/crosshair.h \
     $$PWD/mainwindow.h \
     $$PWD/mygl.h \
     $$PWD/shaderprogram.h \

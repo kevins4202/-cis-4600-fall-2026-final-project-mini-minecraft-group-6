@@ -44,6 +44,8 @@ private:
     QPoint m_lastMousePos;
     bool m_haveMousePos = false;
 
+    QWidget *m_crosshair = nullptr;
+
 
 public:
     explicit MyGL(QWidget *parent = nullptr);

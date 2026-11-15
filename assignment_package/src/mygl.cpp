@@ -7,12 +7,14 @@
 #include <QDateTime>
 #include <QFocusEvent>
 
+#include "crosshair.h"
+
 
 MyGL::MyGL(QWidget *parent)
     : OpenGLContext(parent),
       m_worldAxes(this),
       m_progLambert(this), m_progFlat(this), m_progInstanced(this),
-      m_terrain(this), m_player(glm::vec3(40.f, 150.f, 40.f), m_terrain)
+      m_terrain(this), m_player(glm::vec3(40.5f, 132.f, 40.5f), m_terrain)
 {
     // Connect the timer to a function so that when the timer ticks the function is executed
     connect(&m_timer, SIGNAL(timeout()), this, SLOT(tick()));
@@ -26,6 +28,13 @@ MyGL::MyGL(QWidget *parent)
 
     setMouseTracking(true); // MyGL will track the mouse's movements even if a mouse button is not pressed
     setCursor(Qt::BlankCursor); // Make the cursor invisible
+
+    // Create the crosshair
+
+    m_crosshair = new Crosshair(this);
+    m_crosshair->setGeometry(rect());
+    m_crosshair->show();
+    m_crosshair->raise();
 }
 
 MyGL::~MyGL() {
@@ -88,6 +97,10 @@ void MyGL::resizeGL(int w, int h) {
     m_progInstanced.setUnifMat4("u_ViewProj", viewproj);
 
     printGLErrorLog();
+
+    if (m_crosshair) {
+        m_crosshair->setGeometry(rect());
+    }
 }
 
 
@@ -215,8 +228,62 @@ void MyGL::mouseMoveEvent(QMouseEvent *e) {
     moveMouseToCenter();
 }
 
-void MyGL::mousePressEvent(QMouseEvent *e) {
-    // TODO
+void MyGL::mousePressEvent(QMouseEvent *e)
+{
+    if (e->button() != Qt::LeftButton
+        && e->button() != Qt::RightButton) {
+        return;
+    }
+
+    RayHit hit;
+
+    if (!m_player.getTargetBlock(hit)) {
+        return;
+    }
+
+    const glm::ivec3 block = hit.block;
+
+    // raymarcher treats missing chunks as solid for collision,
+    // but those are not real blocks we can edit
+    if (block.y < 0 || block.y >= 256
+        || !m_terrain.hasChunkAt(block.x, block.z)) {
+        return;
+    }
+
+    if (e->button() == Qt::LeftButton) {
+        // Break the block we hit
+        m_terrain.setGlobalBlockAt(
+            block.x, block.y, block.z, EMPTY
+            );
+    } else {
+        // A ray starting inside a block has no entry face
+        if (hit.normal == glm::ivec3(0)) {
+            return;
+        }
+
+        const glm::ivec3 target = block + hit.normal;
+
+        if (target.y < 0 || target.y >= 256
+            || !m_terrain.hasChunkAt(target.x, target.z)) {
+            return;
+        }
+
+        // Don't replace an existing block
+        if (m_terrain.getGlobalBlockAt(
+                target.x, target.y, target.z) != EMPTY) {
+            return;
+        }
+
+        // Don't place a block through the player
+        if (m_player.overlapsBlock(target)) {
+            return;
+        }
+
+        m_terrain.setGlobalBlockAt(target.x, target.y, target.z, STONE);
+    }
+
+    e->accept();
+    update();
 }
 
 void MyGL::focusInEvent(QFocusEvent *e) {
