@@ -1,17 +1,15 @@
 #include "terrain.h"
 #include "cube.h"
 #include "noise.h"
+#include <array>
 #include <stdexcept>
 #include <iostream>
 
 Terrain::Terrain(OpenGLContext *context)
-    : m_chunks(), m_generatedTerrain(), m_geomCube(context),
-      m_chunkVBOsNeedUpdating(true), mp_context(context)
+    : m_chunks(), m_generatedTerrain(), mp_context(context)
 {}
 
-Terrain::~Terrain() {
-    m_geomCube.destroyVBOdata();
-}
+Terrain::~Terrain() {}
 
 // Combine two 32-bit ints into one 64-bit int
 // where the upper 32 bits are X and the lower 32 bits are Z
@@ -141,9 +139,13 @@ void Terrain::setGlobalBlockAt(int x, int y, int z, BlockType t)
 }
 
 Chunk* Terrain::instantiateChunkAt(int x, int z) {
-    uPtr<Chunk> chunk = mkU<Chunk>(x, z);
+    if(hasChunkAt(x, z)) {
+        return getChunkAt(x, z).get();
+    }
+
+    uPtr<Chunk> chunk = mkU<Chunk>(mp_context, x, z);
     Chunk *cPtr = chunk.get();
-    m_chunks[toKey(x, z)] = move(chunk);
+    m_chunks[toKey(x, z)] = std::move(chunk);
     // Set the neighbor pointers of itself and its neighbors
     if(hasChunkAt(x, z + 16)) {
         auto &chunkNorth = m_chunks[toKey(x, z + 16)];
@@ -162,67 +164,56 @@ Chunk* Terrain::instantiateChunkAt(int x, int z) {
         cPtr->linkNeighbor(chunkWest, XNEG);
     }
     return cPtr;
-    return cPtr;
 }
 
-// TODO: When you make Chunk inherit from Drawable, change this code so
-// it draws each Chunk with the given ShaderProgram
+void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
+    constexpr int CHUNK_SIZE = 16;
+    constexpr float EXPANSION_DISTANCE = 16.f;
+
+    int chunkX = static_cast<int>(glm::floor(playerPosition.x / CHUNK_SIZE)) * CHUNK_SIZE;
+    int chunkZ = static_cast<int>(glm::floor(playerPosition.z / CHUNK_SIZE)) * CHUNK_SIZE;
+
+    if(!hasChunkAt(chunkX, chunkZ)) {
+        Chunk *currentChunk = instantiateChunkAt(chunkX, chunkZ);
+        currentChunk->createVBOdata();
+    }
+
+    struct ExpansionCandidate {
+        int offsetX;
+        int offsetZ;
+        float distanceToEdge;
+    };
+
+    std::array<ExpansionCandidate, 4> candidates {{
+        {-CHUNK_SIZE, 0, playerPosition.x - chunkX},
+        {CHUNK_SIZE, 0, chunkX + CHUNK_SIZE - playerPosition.x},
+        {0, -CHUNK_SIZE, playerPosition.z - chunkZ},
+        {0, CHUNK_SIZE, chunkZ + CHUNK_SIZE - playerPosition.z}
+    }};
+
+    for(const ExpansionCandidate &candidate : candidates) {
+        int newChunkX = chunkX + candidate.offsetX;
+        int newChunkZ = chunkZ + candidate.offsetZ;
+        if(candidate.distanceToEdge <= EXPANSION_DISTANCE &&
+           !hasChunkAt(newChunkX, newChunkZ)) {
+            Chunk *newChunk = instantiateChunkAt(newChunkX, newChunkZ);
+            newChunk->createVBOdata();
+        }
+    }
+}
+
 void Terrain::draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shaderProgram) {
-
-    if(m_chunkVBOsNeedUpdating) {
-        m_geomCube.clearOffsetBuf();
-        m_geomCube.clearColorBuf();
-
-        std::vector<glm::vec3> offsets, colors;
-
-        for(int x = minX; x < maxX; x += 16) {
-            for(int z = minZ; z < maxZ; z += 16) {
-                const uPtr<Chunk> &chunk = getChunkAt(x, z);
-                for(int i = 0; i < 16; ++i) {
-                    for(int j = 0; j < 256; ++j) {
-                        for(int k = 0; k < 16; ++k) {
-                            BlockType t = chunk->getLocalBlockAt(i, j, k);
-
-                            if(t != EMPTY) {
-                                offsets.push_back(glm::vec3(i+x, j, k+z));
-                                switch(t) {
-                                case GRASS:
-                                    colors.push_back(glm::vec3(95.f, 159.f, 53.f) / 255.f);
-                                    break;
-                                case DIRT:
-                                    colors.push_back(glm::vec3(121.f, 85.f, 58.f) / 255.f);
-                                    break;
-                                case STONE:
-                                    colors.push_back(glm::vec3(0.5f));
-                                    break;
-                                case WATER:
-                                    colors.push_back(glm::vec3(0.f, 0.f, 0.75f));
-                                    break;
-                                case SNOW:
-                                    colors.push_back(glm::vec3(1.f));
-                                    break;
-                                default:
-                                    // Other block types are not yet handled, so we default to debug purple
-                                    colors.push_back(glm::vec3(1.f, 0.f, 1.f));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+    for(int x = minX; x < maxX; x += 16) {
+        for(int z = minZ; z < maxZ; z += 16) {
+            if(hasChunkAt(x, z)) {
+                shaderProgram->drawInterleaved(*getChunkAt(x, z));
             }
         }
-        m_geomCube.createInstancedVBOdata(offsets, colors);
-        m_chunkVBOsNeedUpdating = false;
     }
-    shaderProgram->drawInstanced(m_geomCube);
 }
 
 void Terrain::CreateTestScene()
 {
-    // TODO: DELETE THIS LINE WHEN YOU DELETE m_geomCube!
-    m_geomCube.createVBOdata();
-
     // Create the Chunks that will
     // store the blocks for our
     // initial world space
@@ -266,5 +257,9 @@ void Terrain::generateColumn(int x, int z) {
         if(getGlobalBlockAt(x, y, z) == EMPTY) {
             setGlobalBlockAt(x, y, z, WATER);
         }
+    }
+
+    for(auto &chunk : m_chunks) {
+        chunk.second->createVBOdata();
     }
 }
