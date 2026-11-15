@@ -1,5 +1,6 @@
 #include "terrain.h"
 #include "cube.h"
+#include "noise.h"
 #include <stdexcept>
 #include <iostream>
 
@@ -42,6 +43,30 @@ glm::ivec2 toCoords(int64_t k) {
     int64_t x = (k >> 32);
 
     return glm::ivec2(x, z);
+}
+
+int mountainHeight(int x, int z) {
+    glm::vec2 p = glm::vec2(x, z) / 128.f;
+    float noise = fbmAbsPerlin(p);
+    noise = glm::clamp(noise / 0.45f, 0.f, 1.f);
+    float height = 150.f + noise * 105.f;
+    return glm::clamp(static_cast<int>(height), 129, 255);
+}
+
+int grasslandHeight(int x, int z) {
+    glm::vec2 p = glm::vec2(x, z) / 64.f;
+    float noise = worleyNoise(p);
+    noise = 1.f - noise;
+    noise = glm::clamp(noise, 0.f, 1.f);
+    float height = 115.f + noise * 40.f;
+    return glm::clamp(static_cast<int>(height), 129, 255);
+}
+
+float biomeBlend(int x, int z) {
+    glm::vec2 p = glm::vec2(x, z) / 500.f;
+    float noise = perlinNoise2D(p);
+    noise = glm::clamp((noise + 1.f) / 2.f, 0.f, 1.f);
+    return glm::smoothstep(0.25f, 0.75f, noise);
 }
 
 // Surround calls to this with try-catch if you don't know whether
@@ -173,6 +198,9 @@ void Terrain::draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shader
                                 case WATER:
                                     colors.push_back(glm::vec3(0.f, 0.f, 0.75f));
                                     break;
+                                case SNOW:
+                                    colors.push_back(glm::vec3(1.f));
+                                    break;
                                 default:
                                     // Other block types are not yet handled, so we default to debug purple
                                     colors.push_back(glm::vec3(1.f, 0.f, 1.f));
@@ -208,26 +236,35 @@ void Terrain::CreateTestScene()
     // now exists.
     m_generatedTerrain.insert(toKey(0, 0));
 
-    // Create the basic terrain floor
     for(int x = 0; x < 64; ++x) {
         for(int z = 0; z < 64; ++z) {
-            if((x + z) % 2 == 0) {
-                setGlobalBlockAt(x, 128, z, STONE);
-            }
-            else {
-                setGlobalBlockAt(x, 128, z, DIRT);
-            }
+            generateColumn(x, z);
         }
     }
-    // Add "walls" for collision testing
-    for(int x = 0; x < 64; ++x) {
-        setGlobalBlockAt(x, 129, 16, GRASS);
-        setGlobalBlockAt(x, 130, 16, GRASS);
-        setGlobalBlockAt(x, 129, 48, GRASS);
-        setGlobalBlockAt(16, 130, x, GRASS);
+}
+
+void Terrain::generateColumn(int x, int z) {
+    float t = biomeBlend(x, z);
+    int h = static_cast<int>(glm::mix(float(grasslandHeight(x, z)),
+                                      float(mountainHeight(x, z)), t));
+    h = glm::clamp(h, 129, 255);
+    for(int y = 0; y <= 128; ++y) {
+        setGlobalBlockAt(x, y, z, STONE);
     }
-    // Add a central column
-    for(int y = 129; y < 140; ++y) {
-        setGlobalBlockAt(32, y, 32, GRASS);
+    if(t < 0.5f) {
+        for(int y = 129; y < h; ++y) {
+            setGlobalBlockAt(x, y, z, DIRT);
+        }
+        setGlobalBlockAt(x, h, z, GRASS);
+    } else {
+        for(int y = 129; y < h; ++y) {
+            setGlobalBlockAt(x, y, z, STONE);
+        }
+        setGlobalBlockAt(x, h, z, h > 200 ? SNOW : STONE);
+    }
+    for(int y = 129; y <= 138; ++y) {
+        if(getGlobalBlockAt(x, y, z) == EMPTY) {
+            setGlobalBlockAt(x, y, z, WATER);
+        }
     }
 }

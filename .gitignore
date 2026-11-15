@@ -1,2 +1,27 @@
-build-*
-*.pro.user
+# Qt build directories and generated files
+build/
+build-*/
+*.pro.user*
+*.qbs.user*
+.qmake.stash
+.qmake.cache
+.qtc_clangd/
+Makefile
+Makefile.*
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.o
+*.obj
+*.app/
+*.dSYM/
+
+# Local editor configuration and caches
+.vscode/
+.clangd
+.cache/
+compile_commands.json
+
+# macOS metadata
+.DS_Store
+._*
