@@ -4,6 +4,9 @@
 #include <stdexcept>
 #include <iostream>
 
+#include <cmath>
+#include <limits>
+
 Terrain::Terrain(OpenGLContext *context)
     : m_chunks(), m_generatedTerrain(), mp_context(context)
 {}
@@ -129,6 +132,8 @@ void Terrain::setGlobalBlockAt(int x, int y, int z, BlockType t)
                            static_cast<unsigned int>(y),
                            static_cast<unsigned int>(z - chunkOrigin.y),
                            t);
+
+        m_chunkVBOsNeedUpdating = true;
     }
     else {
         throw std::out_of_range("Coordinates " + std::to_string(x) +
@@ -269,6 +274,99 @@ void Terrain::generateColumn(int x, int z) {
     for(int y = 129; y <= 138; ++y) {
         if(getGlobalBlockAt(x, y, z) == EMPTY) {
             setGlobalBlockAt(x, y, z, WATER);
+        }
+    }
+}
+
+// Raymarching Helpers / Code
+
+bool Terrain::isSolidAt(const glm::ivec3 &cell) const
+{
+    if (cell.y < 0 || cell.y >= 256) {
+        return false;
+    }
+
+    // We don't want to walk into ungenerated chunks for now
+    if (!hasChunkAt(cell.x, cell.z)) {
+        return true;
+    }
+
+    return getGlobalBlockAt(cell.x, cell.y, cell.z) != EMPTY;
+}
+
+bool Terrain::gridMarch(glm::vec3 origin, glm::vec3 ray, RayHit &hit) const
+{
+    const float maxDistance = glm::length(ray);
+
+    hit = RayHit{};
+    hit.distance = maxDistance;
+
+    if (maxDistance == 0.f) {
+        return false;
+    }
+
+    const glm::vec3 direction = ray / maxDistance;
+
+    // flooring to find what block a position belongs to
+    glm::ivec3 cell = glm::ivec3(glm::floor(origin));
+
+    if (isSolidAt(cell)) {
+        hit.distance = 0.f;
+        hit.block = cell;
+        return true;
+    }
+
+    const float infinity =
+        std::numeric_limits<float>::infinity();
+
+    glm::ivec3 step(0);
+    glm::vec3 tMax(infinity);
+    glm::vec3 tDelta(infinity);
+
+    for (int axis = 0; axis < 3; ++axis) {
+        if (direction[axis] == 0.f) {
+            continue;
+        }
+
+        step[axis] = direction[axis] > 0.f ? 1 : -1;
+
+        const float boundary = float(
+            cell[axis] + (step[axis] > 0 ? 1 : 0)
+            );
+
+        // distance from origin to the first boundary
+        tMax[axis] =
+            (boundary - origin[axis]) / direction[axis];
+
+        // distance between subsequent boundaries on this axis
+        tDelta[axis] = std::abs(1.f / direction[axis]);
+    }
+
+    while (true) {
+        // find the nearest upcoming boundary
+        int axis = 0;
+
+        if (tMax.y < tMax[axis]) axis = 1;
+        if (tMax.z < tMax[axis]) axis = 2;
+
+        const float distance = tMax[axis];
+
+        if (distance > maxDistance) {
+            return false;
+        }
+
+        // enter the neighboring cell
+        cell[axis] += step[axis];
+        tMax[axis] += tDelta[axis];
+
+        if (isSolidAt(cell)) {
+            hit.distance = distance;
+            hit.block = cell;
+
+            hit.normal = glm::ivec3(0);
+            hit.normal[axis] = -step[axis];
+
+            return true;
         }
     }
 }

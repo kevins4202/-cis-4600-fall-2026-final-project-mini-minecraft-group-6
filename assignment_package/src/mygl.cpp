@@ -1,25 +1,46 @@
+#include <QtGlobal>
+
+#ifdef Q_OS_MACOS
+#include <CoreGraphics/CoreGraphics.h>
+#endif
+
 #include "mygl.h"
 #include <glm_includes.h>
 
 #include <iostream>
 #include <QApplication>
 #include <QKeyEvent>
+#include <QDateTime>
+#include <QFocusEvent>
+
+#include "crosshair.h"
 
 
 MyGL::MyGL(QWidget *parent)
     : OpenGLContext(parent),
       m_worldAxes(this),
       m_progLambert(this), m_progFlat(this), m_progInstanced(this),
-      m_terrain(this), m_player(glm::vec3(32.f, 180.f, 32.f), m_terrain)
+      m_terrain(this), m_player(glm::vec3(40.5f, 132.f, 40.5f), m_terrain)
 {
     // Connect the timer to a function so that when the timer ticks the function is executed
     connect(&m_timer, SIGNAL(timeout()), this, SLOT(tick()));
+
+    // Initial dT incorrect which leads to huge -y velocity
+    m_previousTime = QDateTime::currentMSecsSinceEpoch();
+
     // Tell the timer to redraw 60 times per second
     m_timer.start(16);
     setFocusPolicy(Qt::ClickFocus);
 
     setMouseTracking(true); // MyGL will track the mouse's movements even if a mouse button is not pressed
     setCursor(Qt::BlankCursor); // Make the cursor invisible
+
+    // Create the crosshair
+
+    m_crosshair = new Crosshair(this);
+    m_crosshair->setGeometry(rect());
+    m_crosshair->show();
+    m_crosshair->raise();
 }
 
 MyGL::~MyGL() {
@@ -28,8 +49,22 @@ MyGL::~MyGL() {
 }
 
 
-void MyGL::moveMouseToCenter() {
-    QCursor::setPos(this->mapToGlobal(QPoint(width() / 2, height() / 2)));
+void MyGL::moveMouseToCenter()
+{
+    if (!hasFocus() || !isActiveWindow()) return;
+
+    const QPoint target =
+        mapToGlobal(QPoint(width() / 2, height() / 2));
+
+#ifdef Q_OS_MACOS
+    // Apple documents this for game cursor recentering
+    const CGError warpResult = CGWarpMouseCursorPosition(CGPointMake(target.x(), target.y()));
+
+    // SDL uses this after warping to avoid a movement delay
+    const CGError associateResult = CGAssociateMouseAndMouseCursorPosition(true);
+#else
+    QCursor::setPos(target);
+#endif
 }
 
 void MyGL::initializeGL()
@@ -83,6 +118,10 @@ void MyGL::resizeGL(int w, int h) {
     m_progInstanced.setUnifMat4("u_ViewProj", viewproj);
 
     printGLErrorLog();
+
+    if (m_crosshair) {
+        m_crosshair->setGeometry(rect());
+    }
 }
 
 
@@ -91,6 +130,12 @@ void MyGL::resizeGL(int w, int h) {
 // all per-frame actions here, such as performing physics updates on all
 // entities in the scene.
 void MyGL::tick() {
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    float dT = (currentTime - m_previousTime) / 1000.f;
+    m_previousTime = currentTime;
+
+    m_player.tick(dT, m_inputs);
+
     if(isValid()) {
         makeCurrent();
         m_terrain.expandTerrain(m_player.mcr_position);
@@ -149,48 +194,132 @@ void MyGL::renderTerrain() {
 
 
 void MyGL::keyPressEvent(QKeyEvent *e) {
-    float amount = 2.0f;
-    if(e->modifiers() & Qt::ShiftModifier){
-        amount = 10.0f;
-    }
-    // http://doc.qt.io/qt-5/qt.html#Key-enum
-    // This could all be much more efficient if a switch
-    // statement were used, but I really dislike their
-    // syntax so I chose to be lazy and use a long
-    // chain of if statements instead
+    if (e->isAutoRepeat()) return;
+
     if (e->key() == Qt::Key_Escape) {
         QApplication::quit();
-    } else if (e->key() == Qt::Key_Right) {
-        m_player.rotateOnUpGlobal(-amount);
-    } else if (e->key() == Qt::Key_Left) {
-        m_player.rotateOnUpGlobal(amount);
-    } else if (e->key() == Qt::Key_Up) {
-        m_player.rotateOnRightLocal(-amount);
-    } else if (e->key() == Qt::Key_Down) {
-        m_player.rotateOnRightLocal(amount);
     } else if (e->key() == Qt::Key_W) {
-        m_player.moveForwardLocal(amount);
+        m_inputs.wPressed = true;
     } else if (e->key() == Qt::Key_S) {
-        m_player.moveForwardLocal(-amount);
+        m_inputs.sPressed = true;
     } else if (e->key() == Qt::Key_D) {
-        m_player.moveRightLocal(amount);
+        m_inputs.dPressed = true;
     } else if (e->key() == Qt::Key_A) {
-        m_player.moveRightLocal(-amount);
+        m_inputs.aPressed = true;
     } else if (e->key() == Qt::Key_Q) {
-        m_player.moveUpGlobal(-amount);
+        m_inputs.qPressed = true;
     } else if (e->key() == Qt::Key_E) {
-        m_player.moveUpGlobal(amount);
+        m_inputs.ePressed = true;
+    } else if (e->key() == Qt::Key_Space) {
+        m_inputs.spacePressed = true;
+    } else if (e->key() == Qt::Key_F) {
+        m_inputs.flightMode = !m_inputs.flightMode;
     }
 }
 
 void MyGL::keyReleaseEvent(QKeyEvent *e) {
-    ;
+    if (e->isAutoRepeat()) return;
+
+    if (e->key() == Qt::Key_Escape) {
+        QApplication::quit();
+    } else if (e->key() == Qt::Key_W) {
+        m_inputs.wPressed = false;
+    } else if (e->key() == Qt::Key_S) {
+        m_inputs.sPressed = false;
+    } else if (e->key() == Qt::Key_D) {
+        m_inputs.dPressed = false;
+    } else if (e->key() == Qt::Key_A) {
+        m_inputs.aPressed = false;
+    } else if (e->key() == Qt::Key_Q) {
+        m_inputs.qPressed = false;
+    } else if (e->key() == Qt::Key_E) {
+        m_inputs.ePressed = false;
+    } else if (e->key() == Qt::Key_Space) {
+        m_inputs.spacePressed = false;
+    }
 }
 
-void MyGL::mouseMoveEvent(QMouseEvent *e) {
-    // TODO
+void MyGL::mouseMoveEvent(QMouseEvent *e)
+{
+    if (!hasFocus() || !isActiveWindow()) return;
+
+    const QPoint center(width() / 2, height() / 2);
+
+    // Movement since the cursor was last centered
+    const QPointF delta =
+        e->position() - QPointF(center);
+
+    // Ignore events at the center.
+    if (delta.isNull()) return;
+
+    m_inputs.mouseX += float(delta.x());
+    m_inputs.mouseY += float(delta.y());
+
+    moveMouseToCenter();
 }
 
-void MyGL::mousePressEvent(QMouseEvent *e) {
-    // TODO
+void MyGL::mousePressEvent(QMouseEvent *e)
+{
+    if (e->button() != Qt::LeftButton
+        && e->button() != Qt::RightButton) {
+        return;
+    }
+
+    RayHit hit;
+
+    if (!m_player.getTargetBlock(hit)) {
+        return;
+    }
+
+    const glm::ivec3 block = hit.block;
+
+    // raymarcher treats missing chunks as solid for collision,
+    // but those are not real blocks we can edit
+    if (block.y < 0 || block.y >= 256
+        || !m_terrain.hasChunkAt(block.x, block.z)) {
+        return;
+    }
+
+    if (e->button() == Qt::LeftButton) {
+        // Break the block we hit
+        m_terrain.setGlobalBlockAt(
+            block.x, block.y, block.z, EMPTY
+            );
+    } else {
+        // A ray starting inside a block has no entry face
+        if (hit.normal == glm::ivec3(0)) {
+            return;
+        }
+
+        const glm::ivec3 target = block + hit.normal;
+
+        if (target.y < 0 || target.y >= 256
+            || !m_terrain.hasChunkAt(target.x, target.z)) {
+            return;
+        }
+
+        // Don't replace an existing block
+        if (m_terrain.getGlobalBlockAt(
+                target.x, target.y, target.z) != EMPTY) {
+            return;
+        }
+
+        // Don't place a block through the player
+        if (m_player.overlapsBlock(target)) {
+            return;
+        }
+
+        m_terrain.setGlobalBlockAt(target.x, target.y, target.z, STONE);
+    }
+
+    e->accept();
+    update();
+}
+
+void MyGL::focusInEvent(QFocusEvent *e) {
+    OpenGLContext::focusInEvent(e);
+
+    m_inputs.mouseX = 0.f;
+    m_inputs.mouseY = 0.f;
+    moveMouseToCenter();
 }

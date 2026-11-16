@@ -20,6 +20,7 @@ SOURCES += \
     $$PWD/scene/noise.cpp
 
 HEADERS += \
+    $$PWD/crosshair.h \
     $$PWD/mainwindow.h \
     $$PWD/mygl.h \
     $$PWD/shaderprogram.h \

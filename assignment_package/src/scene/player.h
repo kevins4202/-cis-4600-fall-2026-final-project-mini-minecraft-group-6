@@ -12,6 +12,14 @@ private:
     void processInputs(InputBundle &inputs);
     void computePhysics(float dT, const Terrain &terrain);
 
+    // Flag / Mode for touching floor or flight mode
+    bool m_flightMode = true;
+    bool m_grounded = false;
+
+    float m_pitch; // up / down viewing angle (DEGREES)
+
+    float allowedMovementOnAxis(int axis, float amount, const Terrain &terrain, bool &collided) const;
+
 public:
     // Readonly public reference to our camera
     // for easy access from MyGL
@@ -47,4 +55,8 @@ public:
     QString velAsQString() const;
     QString accAsQString() const;
     QString lookAsQString() const;
+
+    // Break / place
+    bool getTargetBlock(RayHit &hit) const;
+    bool overlapsBlock(const glm::ivec3 &block) const;
 };
