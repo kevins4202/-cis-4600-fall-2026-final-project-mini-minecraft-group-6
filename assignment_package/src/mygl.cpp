@@ -101,6 +101,7 @@ void MyGL::initializeGL()
     glBindVertexArray(vao);
 
     m_terrain.CreateTestScene();
+    m_player.rotateOnRightLocal(-60.f);
 }
 
 
@@ -135,6 +136,11 @@ void MyGL::tick() {
 
     m_player.tick(dT, m_inputs);
 
+    if(isValid()) {
+        makeCurrent();
+        m_terrain.expandTerrain(m_player.mcr_position);
+        doneCurrent();
+    }
     update(); // Calls paintGL() as part of a larger QOpenGLWidget pipeline
     sendPlayerDataToGUI(); // Updates the info in the secondary window displaying player data
 }
@@ -175,7 +181,15 @@ void MyGL::paintGL() {
 // terrain that surround the player (refer to Terrain::m_generatedTerrain
 // for more info)
 void MyGL::renderTerrain() {
-    m_terrain.draw(0, 64, 0, 64, &m_progInstanced);
+    int chunkX = static_cast<int>(glm::floor(m_player.mcr_position.x / 16.f)) * 16;
+    int chunkZ = static_cast<int>(glm::floor(m_player.mcr_position.z / 16.f)) * 16;
+
+    glm::mat4 identity(1.f);
+    m_progLambert.setUnifMat4("u_Model", identity);
+    m_progLambert.setUnifMat4("u_ModelInvTr", identity);
+    m_terrain.draw(chunkX - 16, chunkX + 32,
+                   chunkZ - 16, chunkZ + 32,
+                   &m_progLambert);
 }
 
 

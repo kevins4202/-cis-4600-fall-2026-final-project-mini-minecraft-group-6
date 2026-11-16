@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "shaderprogram.h"
-#include "cube.h"
 
 
 //using namespace std;
@@ -14,6 +13,10 @@
 // Helper functions to convert (x, z) to and from hash map key
 int64_t toKey(int x, int z);
 glm::ivec2 toCoords(int64_t k);
+
+int mountainHeight(int x, int z);
+int grasslandHeight(int x, int z);
+float biomeBlend(int x, int z);
 
 // The container class for all of the Chunks in the game.
 // Ultimately, while Terrain will always store all Chunks,
@@ -53,20 +56,6 @@ private:
     // in the Terrain will never be deleted until the program is terminated.
     std::unordered_set<int64_t> m_generatedTerrain;
 
-    // TODO: DELETE ALL REFERENCES TO m_geomCube AS YOU WILL NOT USE
-    // IT IN YOUR FINAL PROGRAM!
-    // The instance of a unit cube we can use to render any cube.
-    // Presently, Terrain::draw renders one instance of this cube
-    // for every non-EMPTY block within its Chunks. This is horribly
-    // inefficient, and will cause your game to run very slowly until
-    // milestone 1's Chunk VBO setup is completed.
-    Cube m_geomCube;
-
-    // Set this to "true" whenever you modify the blocks
-    // in your terrain. NOT NEEDED ONCE MILESTONE 1's CHUNKING
-    // IS IMPLEMENTED.
-    bool m_chunkVBOsNeedUpdating;
-
     OpenGLContext* mp_context;
 
     //
@@ -80,6 +69,9 @@ public:
     // our chunk map at the given coordinates.
     // Returns a pointer to the created Chunk.
     Chunk* instantiateChunkAt(int x, int z);
+    // Adds and buffers missing neighbor Chunks when the player is
+    // within 16 blocks of one of the current Chunk's edges.
+    void expandTerrain(const glm::vec3 &playerPosition);
     // Do these world-space coordinates lie within
     // a Chunk that exists?
     bool hasChunkAt(int x, int z) const;
@@ -109,4 +101,10 @@ public:
 
     // grid march helper
     bool gridMarch(glm::vec3 origin, glm::vec3 ray, RayHit &hit) const;
+    // Fills column at world (x, z) with procedurally generated
+    // blocks.
+    void generateColumn(int x, int z);
+
+    // Fills every column of the Chunk whose corner is at (chunkX, chunkZ).
+    void generateChunk(int chunkX, int chunkZ);
 };

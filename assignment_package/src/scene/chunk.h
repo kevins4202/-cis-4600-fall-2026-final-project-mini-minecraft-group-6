@@ -1,9 +1,11 @@
 #pragma once
+#include "drawable.h"
 #include "smartpointerhelp.h"
 #include "glm_includes.h"
 #include <array>
 #include <unordered_map>
 #include <cstddef>
+#include <vector>
 
 
 //using namespace std;
@@ -14,7 +16,7 @@
 // block types, but in the scope of this project we'll never get anywhere near that many.
 enum BlockType : unsigned char
 {
-    EMPTY, GRASS, DIRT, STONE, WATER
+    EMPTY, GRASS, DIRT, STONE, WATER, SNOW
 };
 
 // The six cardinal directions in 3D space
@@ -39,8 +41,7 @@ struct EnumHash {
 // render all the world at once, while also not having
 // to render the world block by block.
 
-// TODO have Chunk inherit from Drawable
-class Chunk {
+class Chunk : public Drawable {
 private:
     // All of the blocks contained within this Chunk
     std::array<BlockType, 65536> m_blocks;
@@ -52,8 +53,15 @@ private:
     // These allow us to properly determine
     std::unordered_map<Direction, Chunk*, EnumHash> m_neighbors;
 
+    BlockType getAdjacentBlockAt(int x, int y, int z) const;
+
 public:
-    Chunk(int x, int z);
+    Chunk(OpenGLContext *context, int x, int z);
+    ~Chunk() override = default;
+
+    void createVBOdata() override;
+    void bufferVBOdata(const std::vector<glm::vec4> &vertexData,
+                       const std::vector<GLuint> &indices);
     BlockType getLocalBlockAt(unsigned int x, unsigned int y, unsigned int z) const;
     BlockType getLocalBlockAt(int x, int y, int z) const;
     void setLocalBlockAt(unsigned int x, unsigned int y, unsigned int z, BlockType t);
