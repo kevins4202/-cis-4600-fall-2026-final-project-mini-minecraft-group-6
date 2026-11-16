@@ -20,7 +20,7 @@ MyGL::MyGL(QWidget *parent)
     : OpenGLContext(parent),
       m_worldAxes(this),
       m_progLambert(this), m_progFlat(this), m_progInstanced(this),
-      m_terrain(this), m_player(glm::vec3(40.5f, 132.f, 40.5f), m_terrain)
+      m_terrain(this), m_player(glm::vec3(80.5f, 150.f, 80.5f), m_terrain)
 {
     // Connect the timer to a function so that when the timer ticks the function is executed
     connect(&m_timer, SIGNAL(timeout()), this, SLOT(tick()));
