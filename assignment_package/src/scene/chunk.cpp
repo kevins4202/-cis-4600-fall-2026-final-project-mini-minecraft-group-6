@@ -82,8 +82,14 @@ BlockType Chunk::getAdjacentBlockAt(int x, int y, int z) const {
 }
 
 void Chunk::createVBOdata() {
-  std::vector<glm::vec4> vertexData;
-  std::vector<GLuint> indices;
+  MeshData mesh = buildMeshData();
+  bufferVBOdata(mesh.vertices, mesh.indices);
+}
+
+Chunk::MeshData Chunk::buildMeshData() const {
+  MeshData mesh;
+  auto &vertexData = mesh.vertices;
+  auto &indices = mesh.indices;
 
   for (int z = 0; z < 16; ++z) {
     for (int y = 0; y < 256; ++y) {
@@ -120,26 +126,24 @@ void Chunk::createVBOdata() {
     }
   }
 
-  bufferVBOdata(vertexData, indices);
+  return mesh;
 }
 
 void Chunk::bufferVBOdata(const std::vector<glm::vec4> &vertexData,
                           const std::vector<GLuint> &indices) {
   indexCounts[INDEX] = static_cast<int>(indices.size());
 
-  if (bufGenerated[INDEX]) {
-    mp_context->glDeleteBuffers(1, &bufHandles[INDEX]);
+  if (!bufGenerated[INDEX]) {
+    generateBuffer(INDEX);
   }
-  generateBuffer(INDEX);
   bindBuffer(INDEX);
   mp_context->glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                            indices.size() * sizeof(GLuint), indices.data(),
                            GL_STATIC_DRAW);
 
-  if (bufGenerated[INTERLEAVED]) {
-    mp_context->glDeleteBuffers(1, &bufHandles[INTERLEAVED]);
+  if (!bufGenerated[INTERLEAVED]) {
+    generateBuffer(INTERLEAVED);
   }
-  generateBuffer(INTERLEAVED);
   bindBuffer(INTERLEAVED);
   mp_context->glBufferData(GL_ARRAY_BUFFER,
                            vertexData.size() * sizeof(glm::vec4),
@@ -159,6 +163,7 @@ void Chunk::setLocalBlockAt(unsigned int x, unsigned int y, unsigned int z, Bloc
   unsigned int idx = x + 16 * y + 16 * 256 * z;
   assert(idx < m_blocks.size());   // Optimized away when compiled in release mode
   m_blocks[idx] = t;
+  ++m_revision;
 }
 
 const static std::unordered_map<Direction, Direction, EnumHash> oppositeDirection{{XPOS, XNEG}, {XNEG, XPOS}, {YPOS, YNEG}, {YNEG, YPOS}, {ZPOS, ZNEG}, {ZNEG, ZPOS}};

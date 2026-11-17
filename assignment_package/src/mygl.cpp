@@ -100,7 +100,7 @@ void MyGL::initializeGL()
     // using multiple VAOs, we can just bind one once.
     glBindVertexArray(vao);
 
-    m_terrain.CreateTestScene();
+    m_terrain.CreateTestScene(m_player.mcr_position);
     m_terrain.expandTerrain(m_player.mcr_position);
     m_previousTime = QDateTime::currentMSecsSinceEpoch();
     m_player.rotateOnRightLocal(-60.f);
@@ -140,6 +140,7 @@ void MyGL::tick() {
 
     if(isValid()) {
         makeCurrent();
+        glBindVertexArray(vao);
         m_terrain.expandTerrain(m_player.mcr_position);
         doneCurrent();
     }

@@ -1,13 +1,15 @@
 #include "terrain.h"
 #include "noise.h"
 #include <array>
+#include <chrono>
+#include <utility>
 #include <iostream>
 #include <stdexcept>
 
 #include <cmath>
 #include <limits>
 
-Terrain::Terrain(OpenGLContext *context) : m_chunks(), m_generatedTerrain(), mp_context(context) {}
+Terrain::Terrain(OpenGLContext *context) : m_chunks(), mp_context(context) {}
 
 Terrain::~Terrain() {}
 
@@ -149,46 +151,101 @@ Chunk *Terrain::instantiateChunkAt(int x, int z) {
   return cPtr;
 }
 
+Terrain::ChunkBuildResult Terrain::buildChunk(glm::ivec2 origin,
+                                                   std::vector<ChunkSnapshot> snapshots) {
+  Terrain staging(nullptr);
+  for (const ChunkSnapshot &snapshot : snapshots) {
+    staging.instantiateChunkAt(snapshot.origin.x, snapshot.origin.y)
+        ->setBlockData(snapshot.blocks);
+  }
+  Chunk *generated = staging.instantiateChunkAt(origin.x, origin.y);
+  staging.generateChunk(origin.x, origin.y);
+
+  ChunkBuildResult result;
+  result.origin = origin;
+  result.blocks = generated->blockData();
+  result.meshes.reserve(5);
+  result.meshes.push_back({origin, generated->buildMeshData()});
+  const std::array<glm::ivec2, 4> offsets{{{-CHUNK_SIZE, 0}, {CHUNK_SIZE, 0},
+                                        {0, -CHUNK_SIZE}, {0, CHUNK_SIZE}}};
+  for (const glm::ivec2 &offset : offsets) {
+    const glm::ivec2 neighbor = origin + offset;
+    if (staging.hasChunkAt(neighbor.x, neighbor.y)) {
+      result.meshes.push_back({neighbor,
+          staging.getChunkAt(neighbor.x, neighbor.y)->buildMeshData()});
+    }
+  }
+  return result;
+}
+
+void Terrain::queueChunk(glm::ivec2 origin) {
+  std::vector<ChunkSnapshot> snapshots;
+  snapshots.reserve(13);
+  m_pendingVersions.clear();
+  m_pendingVersions.reserve(13);
+  // snapshot a two-chunk radius to rebuild the new chunk and its neighbors
+  for (int dx = -2; dx <= 2; ++dx) {
+    for (int dz = -2; dz <= 2; ++dz) {
+      if (std::abs(dx) + std::abs(dz) > 2) continue;
+      const glm::ivec2 position = origin + glm::ivec2(dx, dz) * CHUNK_SIZE;
+      const bool present = hasChunkAt(position.x, position.y);
+      const uint64_t revision = present ? getChunkAt(position.x, position.y)->revision() : 0;
+      m_pendingVersions.push_back({position, present, revision});
+      if (present) {
+        snapshots.push_back({position, getChunkAt(position.x, position.y)->blockData()});
+      }
+    }
+  }
+  m_pendingChunk = std::async(std::launch::async, &Terrain::buildChunk,
+                             origin, std::move(snapshots));
+}
+
+bool Terrain::publishCompletedChunk() {
+  if (!m_pendingChunk.valid() ||
+      m_pendingChunk.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    return false;
+  }
+  ChunkBuildResult result = m_pendingChunk.get();
+  for (const ChunkVersion &version : m_pendingVersions) {
+    const bool present = hasChunkAt(version.origin.x, version.origin.y);
+    if (present != version.present ||
+        (present && getChunkAt(version.origin.x, version.origin.y)->revision() != version.revision)) {
+      // discard stale meshes and retry from current blocks to preserve edits
+      return false;
+    }
+  }
+  instantiateChunkAt(result.origin.x, result.origin.y)->setBlockData(result.blocks);
+  for (const MeshUpload &upload : result.meshes) {
+    getChunkAt(upload.origin.x, upload.origin.y)
+        ->bufferVBOdata(upload.mesh.vertices, upload.mesh.indices);
+  }
+  return true;
+}
+
 void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
-  int zoneX = static_cast<int>(glm::floor(playerPosition.x / ZONE_SIZE)) * ZONE_SIZE;
-  int zoneZ = static_cast<int>(glm::floor(playerPosition.z / ZONE_SIZE)) * ZONE_SIZE;
-  std::unordered_set<int64_t> meshesToRebuild;
-  const std::array<glm::ivec2, 4> neighborOffsets{{{-CHUNK_SIZE, 0}, {CHUNK_SIZE, 0}, {0, -CHUNK_SIZE}, {0, CHUNK_SIZE}}};
+  publishCompletedChunk();
+  if (m_pendingChunk.valid()) return;
 
-  // generate missing zones and preserve existing terrain
-  for (int dx = -RENDER_ZONE_RADIUS; dx <= RENDER_ZONE_RADIUS; ++dx) {
-    for (int dz = -RENDER_ZONE_RADIUS; dz <= RENDER_ZONE_RADIUS; ++dz) {
-      int originX = zoneX + dx * ZONE_SIZE;
-      int originZ = zoneZ + dz * ZONE_SIZE;
-      int64_t zoneKey = toKey(originX, originZ);
-      if (m_generatedTerrain.count(zoneKey) != 0) {
-        continue;
+  const int zoneX = static_cast<int>(glm::floor(playerPosition.x / ZONE_SIZE)) * ZONE_SIZE;
+  const int zoneZ = static_cast<int>(glm::floor(playerPosition.z / ZONE_SIZE)) * ZONE_SIZE;
+  constexpr int radius = RENDER_ZONE_RADIUS * ZONE_SIZE;
+  float nearestDistance = std::numeric_limits<float>::infinity();
+  glm::ivec2 nearest;
+  bool found = false;
+  for (int x = zoneX - radius; x < zoneX + radius + ZONE_SIZE; x += CHUNK_SIZE) {
+    for (int z = zoneZ - radius; z < zoneZ + radius + ZONE_SIZE; z += CHUNK_SIZE) {
+      if (hasChunkAt(x, z)) continue;
+      const glm::vec2 delta = glm::vec2(x + CHUNK_SIZE / 2.f, z + CHUNK_SIZE / 2.f)
+                            - glm::vec2(playerPosition.x, playerPosition.z);
+      const float distance = glm::dot(delta, delta);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = glm::ivec2(x, z);
+        found = true;
       }
-
-      for (int x = originX; x < originX + ZONE_SIZE; x += CHUNK_SIZE) {
-        for (int z = originZ; z < originZ + ZONE_SIZE; z += CHUNK_SIZE) {
-          if (hasChunkAt(x, z)) {
-            continue;
-          }
-          instantiateChunkAt(x, z);
-          generateChunk(x, z);
-          meshesToRebuild.insert(toKey(x, z));
-          for (const glm::ivec2 &offset : neighborOffsets) {
-            meshesToRebuild.insert(toKey(x + offset.x, z + offset.y));
-          }
-        }
-      }
-      m_generatedTerrain.insert(zoneKey);
     }
   }
-
-  // rebuild new and bordering meshes after generation
-  for (int64_t key : meshesToRebuild) {
-    glm::ivec2 origin = toCoords(key);
-    if (hasChunkAt(origin.x, origin.y)) {
-      getChunkAt(origin.x, origin.y)->createVBOdata();
-    }
-  }
+  if (found) queueChunk(nearest);
 }
 
 void Terrain::draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shaderProgram) {
@@ -201,26 +258,15 @@ void Terrain::draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shader
   }
 }
 
-void Terrain::CreateTestScene() {
-  // Create the Chunks that will
-  // store the blocks for our
-  // initial world space
-  for (int x = 0; x < 64; x += 16) {
-    for (int z = 0; z < 64; z += 16) {
+void Terrain::CreateTestScene(const glm::vec3 &playerPosition) {
+  const int zoneX = static_cast<int>(glm::floor(playerPosition.x / ZONE_SIZE)) * ZONE_SIZE;
+  const int zoneZ = static_cast<int>(glm::floor(playerPosition.z / ZONE_SIZE)) * ZONE_SIZE;
+  for (int x = zoneX; x < zoneX + ZONE_SIZE; x += CHUNK_SIZE) {
+    for (int z = zoneZ; z < zoneZ + ZONE_SIZE; z += CHUNK_SIZE) {
       instantiateChunkAt(x, z);
+      generateChunk(x, z);
     }
   }
-  // Tell our existing terrain set that
-  // the "generated terrain zone" at (0,0)
-  // now exists.
-  m_generatedTerrain.insert(toKey(0, 0));
-
-  for (int x = 0; x < 64; ++x) {
-    for (int z = 0; z < 64; ++z) {
-      generateColumn(x, z);
-    }
-  }
-
   for (auto &chunk : m_chunks) {
     chunk.second->createVBOdata();
   }
@@ -235,26 +281,33 @@ void Terrain::generateChunk(int chunkX, int chunkZ) {
 }
 
 void Terrain::generateColumn(int x, int z) {
+  // resolve the chunk once per column to avoid repeated world-coordinate lookups
+  Chunk &chunk = *getChunkAt(x, z);
+  const int localX = x - static_cast<int>(glm::floor(x / 16.f)) * 16;
+  const int localZ = z - static_cast<int>(glm::floor(z / 16.f)) * 16;
+  const auto setBlock = [&chunk, localX, localZ](int y, BlockType type) {
+    chunk.setLocalBlockAt(localX, y, localZ, type);
+  };
   float t = biomeBlend(x, z);
   int h = static_cast<int>(glm::mix(float(grasslandHeight(x, z)), float(mountainHeight(x, z)), t));
   h = glm::clamp(h, 129, 255);
   for (int y = 0; y <= 128; ++y) {
-    setGlobalBlockAt(x, y, z, STONE);
+    setBlock(y, STONE);
   }
   if (t < 0.5f) {
     for (int y = 129; y < h; ++y) {
-      setGlobalBlockAt(x, y, z, DIRT);
+      setBlock(y, DIRT);
     }
-    setGlobalBlockAt(x, h, z, GRASS);
+    setBlock(h, GRASS);
   } else {
     for (int y = 129; y < h; ++y) {
-      setGlobalBlockAt(x, y, z, STONE);
+      setBlock(y, STONE);
     }
-    setGlobalBlockAt(x, h, z, h > 200 ? SNOW : STONE);
+    setBlock(h, h > 200 ? SNOW : STONE);
   }
   for (int y = 129; y <= 138; ++y) {
-    if (getGlobalBlockAt(x, y, z) == EMPTY) {
-      setGlobalBlockAt(x, y, z, WATER);
+    if (chunk.getLocalBlockAt(localX, y, localZ) == EMPTY) {
+      setBlock(y, WATER);
     }
   }
 }

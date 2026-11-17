@@ -5,7 +5,8 @@
 #include "smartpointerhelp.h"
 #include <array>
 #include <unordered_map>
-#include <unordered_set>
+#include <future>
+#include <vector>
 
 // using namespace std;
 
@@ -40,20 +41,32 @@ private:
   // glm::ivec2s are not hashable by default, so they cannot be used as keys.
   std::unordered_map<int64_t, uPtr<Chunk>> m_chunks;
 
-  // We will designate every 64 x 64 area of the world's x-z plane
-  // as one "terrain generation zone". Every time the player moves
-  // near a portion of the world that has not yet been generated
-  // (i.e. its lower-left coordinates are not in this set), a new
-  // 4 x 4 collection of Chunks is created to represent that area
-  // of the world.
-  // The world that exists when the base code is run consists of exactly
-  // one 64 x 64 area with its lower-left corner at (0, 0).
-  // When milestone 1 has been implemented, the Player can move around the
-  // world to add more "terrain generation zone" IDs to this set.
-  // While only the 3 x 3 collection of terrain generation zones
-  // surrounding the Player should be rendered, the Chunks
-  // in the Terrain will never be deleted until the program is terminated.
-  std::unordered_set<int64_t> m_generatedTerrain;
+  struct ChunkSnapshot {
+    glm::ivec2 origin;
+    Chunk::BlockData blocks;
+  };
+  struct ChunkVersion {
+    glm::ivec2 origin;
+    bool present;
+    uint64_t revision;
+  };
+  struct MeshUpload {
+    glm::ivec2 origin;
+    Chunk::MeshData mesh;
+  };
+  struct ChunkBuildResult {
+    glm::ivec2 origin;
+    Chunk::BlockData blocks;
+    std::vector<MeshUpload> meshes;
+  };
+
+  // isolate one background job and track revisions to protect live block edits
+  std::future<ChunkBuildResult> m_pendingChunk;
+  std::vector<ChunkVersion> m_pendingVersions;
+  static ChunkBuildResult buildChunk(glm::ivec2 origin,
+                                    std::vector<ChunkSnapshot> snapshots);
+  bool publishCompletedChunk();
+  void queueChunk(glm::ivec2 origin);
 
   OpenGLContext *mp_context;
 
@@ -72,7 +85,7 @@ public:
   // our chunk map at the given coordinates.
   // Returns a pointer to the created Chunk.
   Chunk *instantiateChunkAt(int x, int z);
-  // generate surrounding zones and update meshes
+  // publish completed work and queue the nearest missing chunk
   void expandTerrain(const glm::vec3 &playerPosition);
   // Do these world-space coordinates lie within
   // a Chunk that exists?
@@ -97,9 +110,8 @@ public:
   // ShaderProgram
   void draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shaderProgram);
 
-  // Initializes the Chunks that store the 64 x 256 x 64 block scene you
-  // see when the base code is run.
-  void CreateTestScene();
+  // populate the spawn zone before physics starts and stream other chunks
+  void CreateTestScene(const glm::vec3 &playerPosition);
 
   // grid march helper
   bool gridMarch(glm::vec3 origin, glm::vec3 ray, RayHit &hit) const;

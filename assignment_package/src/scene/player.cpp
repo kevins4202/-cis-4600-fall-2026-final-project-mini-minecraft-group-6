@@ -4,7 +4,10 @@
 #include <algorithm>
 #include <cmath>
 
+// leave clearance through one-block-wide passages
 static constexpr float HALF_WIDTH = 0.3f;
+// leave headroom beneath two-block-high ceilings
+static constexpr float PLAYER_HEIGHT = 1.8f;
 
 Player::Player(glm::vec3 pos, const Terrain &terrain)
     : Entity(pos), m_velocity(0,0,0), m_acceleration(0,0,0),
@@ -17,13 +20,36 @@ Player::~Player()
 
 void Player::tick(float dT, InputBundle &input) {
     processInputs(input);
-    computePhysics(dT, mcr_terrain);
+    // discard excess elapsed time to prevent large movements after a stall
+    if (!std::isfinite(dT) || dT <= 0.f) {
+        return;
+    }
+    const float frameTime = std::min(dT, 0.05f);
+    const int steps = static_cast<int>(std::ceil(frameTime / (1.f / 120.f)));
+    const float stepTime = frameTime / steps;
+    for (int step = 0; step < steps; ++step) {
+        computePhysics(stepTime, mcr_terrain);
+    }
 }
 
 void Player::processInputs(InputBundle &inputs) {
     m_acceleration = glm::vec3(0.f);
 
     m_flightMode = inputs.flightMode;
+
+    // mouse movement
+
+    const float sensitivity = 0.15f;
+
+    rotateOnUpGlobal(-inputs.mouseX * sensitivity);
+
+    float newPitch = glm::clamp(m_pitch - inputs.mouseY * sensitivity, -89.f, 89.f);
+
+    rotateOnRightLocal(newPitch - m_pitch);
+
+    // consume and reset the movement
+    inputs.mouseX = 0.f;
+    inputs.mouseY = 0.f;
 
     glm::vec3 forward = m_forward;
     glm::vec3 right = m_right;
@@ -44,21 +70,6 @@ void Player::processInputs(InputBundle &inputs) {
             right = glm::vec3(0.f);
         }
     }
-
-    // MOUSE MOVEMENT
-
-    const float sensitivity = 0.15f;
-
-    rotateOnUpGlobal(-inputs.mouseX * sensitivity);
-
-    float newPitch = glm::clamp(m_pitch - inputs.mouseY * sensitivity, -89.f, 89.f);
-
-    rotateOnRightLocal(newPitch - m_pitch);
-    m_pitch = newPitch;
-
-    // Consume and reset the movement
-    inputs.mouseX = 0.f;
-    inputs.mouseY = 0.f;
 
     const float acceleration = m_flightMode ? 25.f : 60.f;
 
@@ -82,8 +93,9 @@ void Player::processInputs(InputBundle &inputs) {
 }
 
 void Player::computePhysics(float dT, const Terrain &terrain) {
+    glm::vec3 acceleration = m_acceleration;
     if (!m_flightMode) {
-        m_acceleration.y -= 25.f;
+        acceleration.y -= 25.f;
     }
 
     const float horizontalDrag = m_flightMode ? 3.f : 10.f;
@@ -95,7 +107,7 @@ void Player::computePhysics(float dT, const Terrain &terrain) {
     m_velocity.z *= horizontalDamping;
     m_velocity.y *= std::exp(-3.f * dT);
 
-    m_velocity += m_acceleration * dT;
+    m_velocity += acceleration * dT;
 
     glm::vec3 displacement = m_velocity * dT;
 
@@ -168,8 +180,12 @@ void Player::rotateOnForwardLocal(float degrees) {
     m_camera.rotateOnForwardLocal(degrees);
 }
 void Player::rotateOnRightLocal(float degrees) {
-    Entity::rotateOnRightLocal(degrees);
-    m_camera.rotateOnRightLocal(degrees);
+    // keep direct rotations and mouse look in sync
+    const float newPitch = glm::clamp(m_pitch + degrees, -89.f, 89.f);
+    const float rotation = newPitch - m_pitch;
+    Entity::rotateOnRightLocal(rotation);
+    m_camera.rotateOnRightLocal(rotation);
+    m_pitch = newPitch;
 }
 void Player::rotateOnUpLocal(float degrees) {
     Entity::rotateOnUpLocal(degrees);
@@ -205,7 +221,7 @@ QString Player::lookAsQString() const {
     return QString::fromStdString(str);
 }
 
-// Collision helper
+// collision helper
 
 float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terrain, bool &collided) const
 {
@@ -222,12 +238,10 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
 
     glm::vec3 ray(0.f);
 
-    // Epsilon for contact margin
-    // Don't return the full distance so we can't
-    // clip into walls
+    // keep a small contact margin to avoid clipping into walls
     ray[axis] = sign * (allowed + EPS);
 
-    const float ys[] = {EPS, 1.f, 2.f - EPS};
+    const float ys[] = {EPS, PLAYER_HEIGHT * 0.5f, PLAYER_HEIGHT - EPS};
     const float xs[] = {-HALF_WIDTH + EPS, HALF_WIDTH - EPS};
     const float zs[] = {-HALF_WIDTH + EPS, HALF_WIDTH - EPS};
 
@@ -239,7 +253,7 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
 
                 if (axis == 1) {
                     origin.y = m_position.y
-                               + (sign > 0.f ? 2.f : 0.f);
+                               + (sign > 0.f ? PLAYER_HEIGHT : 0.f);
                 } else {
                     origin[axis] = m_position[axis] + sign * HALF_WIDTH;
                 }
@@ -260,7 +274,7 @@ float Player::allowedMovementOnAxis(int axis, float amount, const Terrain &terra
     return sign * allowed;
 }
 
-// Break / place
+// break / place
 
 bool Player::getTargetBlock(RayHit &hit) const
 {
@@ -271,7 +285,7 @@ bool Player::overlapsBlock(const glm::ivec3 &block) const
 {
     const glm::vec3 playerMin = m_position + glm::vec3(-HALF_WIDTH, 0.f, -HALF_WIDTH);
 
-    const glm::vec3 playerMax = m_position + glm::vec3(HALF_WIDTH, 2.f, HALF_WIDTH);
+    const glm::vec3 playerMax = m_position + glm::vec3(HALF_WIDTH, PLAYER_HEIGHT, HALF_WIDTH);
 
     const glm::vec3 blockMin = glm::vec3(block);
     const glm::vec3 blockMax = blockMin + glm::vec3(1.f);

@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <cstddef>
 #include <vector>
+#include <cstdint>
 
 
 //using namespace std;
@@ -45,6 +46,7 @@ class Chunk : public Drawable {
 private:
     // All of the blocks contained within this Chunk
     std::array<BlockType, 65536> m_blocks;
+    uint64_t m_revision = 0;
     // The coordinates of the chunk's lower-left corner in world space
     int minX, minZ;
     // This Chunk's four neighbors to the north, south, east, and west
@@ -59,6 +61,17 @@ public:
     Chunk(OpenGLContext *context, int x, int z);
     ~Chunk() override = default;
 
+    using BlockData = std::array<BlockType, 65536>;
+    struct MeshData {
+        std::vector<glm::vec4> vertices;
+        std::vector<GLuint> indices;
+    };
+
+    const BlockData &blockData() const { return m_blocks; }
+    void setBlockData(const BlockData &blocks) { m_blocks = blocks; ++m_revision; }
+    uint64_t revision() const { return m_revision; }
+    // build mesh data from isolated snapshots without an opengl context
+    MeshData buildMeshData() const;
     void createVBOdata() override;
     void bufferVBOdata(const std::vector<glm::vec4> &vertexData,
                        const std::vector<GLuint> &indices);
