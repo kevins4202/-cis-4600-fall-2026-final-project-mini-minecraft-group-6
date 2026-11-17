@@ -281,6 +281,8 @@ void MyGL::mousePressEvent(QMouseEvent *e)
         return;
     }
 
+    glm::ivec3 editedBlock = block;
+
     if (e->button() == Qt::LeftButton) {
         // Break the block we hit
         m_terrain.setGlobalBlockAt(
@@ -311,7 +313,40 @@ void MyGL::mousePressEvent(QMouseEvent *e)
         }
 
         m_terrain.setGlobalBlockAt(target.x, target.y, target.z, STONE);
+        editedBlock = target;
     }
+
+    constexpr int size = Terrain::CHUNK_SIZE;
+    const int chunkX = static_cast<int>(glm::floor(editedBlock.x / float(size))) * size;
+    const int chunkZ = static_cast<int>(glm::floor(editedBlock.z / float(size))) * size;
+    const int localX = editedBlock.x - chunkX;
+    const int localZ = editedBlock.z - chunkZ;
+
+    makeCurrent();
+    glBindVertexArray(vao);
+
+    auto rebuildIfLoaded = [this](int x, int z) {
+        if (m_terrain.hasChunkAt(x, z)) {
+            m_terrain.getChunkAt(x, z)->createVBOdata();
+        }
+    };
+
+    rebuildIfLoaded(chunkX, chunkZ);
+    if (localX == 0) {
+        rebuildIfLoaded(chunkX - size, chunkZ);
+    }
+    if (localX == size - 1) {
+        rebuildIfLoaded(chunkX + size, chunkZ);
+    }
+    if (localZ == 0) {
+        rebuildIfLoaded(chunkX, chunkZ - size);
+    }
+    if (localZ == size - 1) {
+        rebuildIfLoaded(chunkX, chunkZ + size);
+    }
+
+    doneCurrent();
+
 
     e->accept();
     update();
