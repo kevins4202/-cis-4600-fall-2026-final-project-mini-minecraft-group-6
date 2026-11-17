@@ -1,2 +1,12 @@
 Kevin:
 11/14 5 PM: I reviewed how to store and do the offsets for interleaved buffers with https://learnopengl.com/Advanced-OpenGL/Advanced-Data
+
+Lucas Qu:
+
+11/14 11:12 PM: Searched for a macOS apple developer function specifically for mouse centering. 
+- https://developer.apple.com/documentation/coregraphics/cgwarpmousecursorposition(_:)
+- This is because setPos() does not seem to work properly for some versions of Qt, specifically ones for macOS.
+
+  Issues I resolved:
+  - calculation of mouse deltas between frames using a stored last position, this fixed the sensitivity and spinning
+  - no position change due to lack of use of the calculated velocity
