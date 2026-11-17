@@ -17,6 +17,7 @@ SOURCES += \
     $$PWD/scene/camera.cpp \
     $$PWD/playerinfo.cpp \
     $$PWD/scene/chunk.cpp \
+    $$PWD/scene/terrainworkers.cpp \
     $$PWD/scene/noise.cpp
 
 HEADERS += \
@@ -37,4 +38,5 @@ HEADERS += \
     $$PWD/scene/camera.h \
     $$PWD/playerinfo.h \
     $$PWD/scene/chunk.h \
+    $$PWD/scene/terrainworkers.h \
     $$PWD/scene/noise.h

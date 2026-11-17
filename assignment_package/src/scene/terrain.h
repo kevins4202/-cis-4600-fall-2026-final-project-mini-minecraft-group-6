@@ -5,7 +5,9 @@
 #include "smartpointerhelp.h"
 #include <array>
 #include <unordered_map>
-#include <future>
+#include "terrainworkers.h"
+#include <QThreadPool>
+#include <unordered_set>
 #include <vector>
 
 // using namespace std;
@@ -41,32 +43,21 @@ private:
   // glm::ivec2s are not hashable by default, so they cannot be used as keys.
   std::unordered_map<int64_t, uPtr<Chunk>> m_chunks;
 
-  struct ChunkSnapshot {
-    glm::ivec2 origin;
-    Chunk::BlockData blocks;
-  };
-  struct ChunkVersion {
-    glm::ivec2 origin;
-    bool present;
-    uint64_t revision;
-  };
-  struct MeshUpload {
-    glm::ivec2 origin;
-    Chunk::MeshData mesh;
-  };
-  struct ChunkBuildResult {
-    glm::ivec2 origin;
-    Chunk::BlockData blocks;
-    std::vector<MeshUpload> meshes;
-  };
+  std::unordered_set<int64_t> m_generatedTerrain;
+  std::unordered_set<int64_t> m_generatingZones;
+  std::unordered_set<int64_t> m_meshingChunks;
+  std::unordered_set<int64_t> m_dirtyChunks;
 
-  // isolate one background job and track revisions to protect live block edits
-  std::future<ChunkBuildResult> m_pendingChunk;
-  std::vector<ChunkVersion> m_pendingVersions;
-  static ChunkBuildResult buildChunk(glm::ivec2 origin,
-                                    std::vector<ChunkSnapshot> snapshots);
-  bool publishCompletedChunk();
-  void queueChunk(glm::ivec2 origin);
+  // workers only share these mutex-protected queues with the main thread
+  TerrainWorkQueue<BlockTypeResult> m_completedBlocks;
+  TerrainWorkQueue<VBOResult> m_completedMeshes;
+  QThreadPool m_workerPool;
+
+  void linkChunkNeighbors(Chunk &chunk, int x, int z);
+  void markChunkAndNeighborsDirty(int x, int z);
+  void publishGeneratedZone();
+  void uploadCompletedMeshes();
+  void queueVBOWorker(glm::ivec2 origin);
 
   OpenGLContext *mp_context;
 
@@ -77,6 +68,7 @@ public:
   static constexpr int CHUNK_SIZE = 16;
   static constexpr int ZONE_SIZE = 64;
   static constexpr int RENDER_ZONE_RADIUS = 1;
+  static constexpr int GENERATION_ZONE_RADIUS = 2;
 
   Terrain(OpenGLContext *context);
   ~Terrain();
@@ -85,7 +77,7 @@ public:
   // our chunk map at the given coordinates.
   // Returns a pointer to the created Chunk.
   Chunk *instantiateChunkAt(int x, int z);
-  // publish completed work and queue the nearest missing chunk
+  // scan nearby zones and advance block generation, meshing, and uploads
   void expandTerrain(const glm::vec3 &playerPosition);
   // Do these world-space coordinates lie within
   // a Chunk that exists?
@@ -121,4 +113,5 @@ public:
 
   // Fills every column of the Chunk whose corner is at (chunkX, chunkZ).
   void generateChunk(int chunkX, int chunkZ);
+  static void fillChunkBlocks(Chunk &chunk, int chunkX, int chunkZ);
 };

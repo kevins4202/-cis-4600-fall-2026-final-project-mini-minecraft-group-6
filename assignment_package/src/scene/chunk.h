@@ -70,6 +70,7 @@ public:
     const BlockData &blockData() const { return m_blocks; }
     void setBlockData(const BlockData &blocks) { m_blocks = blocks; ++m_revision; }
     uint64_t revision() const { return m_revision; }
+    glm::ivec2 origin() const { return glm::ivec2(minX, minZ); }
     // build mesh data from isolated snapshots without an opengl context
     MeshData buildMeshData() const;
     void createVBOdata() override;
