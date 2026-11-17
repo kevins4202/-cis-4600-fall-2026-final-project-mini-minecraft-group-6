@@ -101,6 +101,8 @@ void MyGL::initializeGL()
     glBindVertexArray(vao);
 
     m_terrain.CreateTestScene();
+    m_terrain.expandTerrain(m_player.mcr_position);
+    m_previousTime = QDateTime::currentMSecsSinceEpoch();
     m_player.rotateOnRightLocal(-60.f);
 }
 
@@ -177,18 +179,17 @@ void MyGL::paintGL() {
     glEnable(GL_DEPTH_TEST);
 }
 
-// TODO: Change this so it renders the nine zones of generated
-// terrain that surround the player (refer to Terrain::m_generatedTerrain
-// for more info)
+// draw the surrounding 3 x 3 zones
 void MyGL::renderTerrain() {
-    int chunkX = static_cast<int>(glm::floor(m_player.mcr_position.x / 16.f)) * 16;
-    int chunkZ = static_cast<int>(glm::floor(m_player.mcr_position.z / 16.f)) * 16;
+    int zoneX = static_cast<int>(glm::floor(m_player.mcr_position.x / Terrain::ZONE_SIZE)) * Terrain::ZONE_SIZE;
+    int zoneZ = static_cast<int>(glm::floor(m_player.mcr_position.z / Terrain::ZONE_SIZE)) * Terrain::ZONE_SIZE;
+    constexpr int radius = Terrain::RENDER_ZONE_RADIUS * Terrain::ZONE_SIZE;
 
     glm::mat4 identity(1.f);
     m_progLambert.setUnifMat4("u_Model", identity);
     m_progLambert.setUnifMat4("u_ModelInvTr", identity);
-    m_terrain.draw(chunkX - 16, chunkX + 32,
-                   chunkZ - 16, chunkZ + 32,
+    m_terrain.draw(zoneX - radius, zoneX + radius + Terrain::ZONE_SIZE,
+                   zoneZ - radius, zoneZ + radius + Terrain::ZONE_SIZE,
                    &m_progLambert);
 }
 
