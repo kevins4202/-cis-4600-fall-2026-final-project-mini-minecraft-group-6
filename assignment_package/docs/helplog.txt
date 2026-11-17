@@ -1,0 +1,2 @@
+Kevin:
+11/14 5 PM: I reviewed how to store and do the offsets for interleaved buffers with https://learnopengl.com/Advanced-OpenGL/Advanced-Data
