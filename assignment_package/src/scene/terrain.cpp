@@ -149,7 +149,8 @@ void Terrain::markChunkAndNeighborsDirty(int x, int z) {
 
 void Terrain::publishGeneratedZone() {
   BlockTypeResult result;
-  if (!m_completedBlocks.tryPop(result)) return;
+  std::vector<Chunk*> filledChunks;
+  if (!m_completedBlocks.tryPop(result, filledChunks)) return;
   const int64_t zoneKey = toKey(result.zone.x, result.zone.y);
   m_generatingZones.erase(zoneKey);
   if (!result.error.empty()) {
@@ -163,13 +164,17 @@ void Terrain::publishGeneratedZone() {
       m_chunks.emplace(toKey(origin.x, origin.y), std::move(chunk));
     }
   }
-  for (int x = result.zone.x; x < result.zone.x + ZONE_SIZE; x += CHUNK_SIZE) {
-    for (int z = result.zone.y; z < result.zone.y + ZONE_SIZE; z += CHUNK_SIZE) {
-      linkChunkNeighbors(*getChunkAt(x, z), x, z);
-      markChunkAndNeighborsDirty(x, z);
-    }
+  for (Chunk *chunk : filledChunks) {
+    const glm::ivec2 origin = chunk->origin();
+    linkChunkNeighbors(*getChunkAt(origin.x, origin.y), origin.x, origin.y);
+    markChunkAndNeighborsDirty(origin.x, origin.y);
   }
   m_generatedTerrain.insert(zoneKey);
+  for (Chunk *chunk : filledChunks) {
+    if (m_meshingChunks.size() >= 8) break;
+    const glm::ivec2 origin = chunk->origin();
+    if (m_meshingChunks.count(toKey(origin.x, origin.y)) == 0) queueVBOWorker(origin);
+  }
 }
 
 void Terrain::uploadCompletedMeshes() {
@@ -189,7 +194,7 @@ void Terrain::uploadCompletedMeshes() {
       }
     }
     if (current) {
-      getChunkAt(result.origin.x, result.origin.y)->bufferVBOdata(result.mesh.vertices, result.mesh.indices);
+      getChunkAt(result.origin.x, result.origin.y)->bufferVBOdata(result.mesh);
       m_dirtyChunks.erase(key);
     } else {
       // retry meshes invalidated by edits or newly generated neighbors
@@ -221,9 +226,6 @@ void Terrain::queueVBOWorker(glm::ivec2 origin) {
 }
 
 void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
-  publishGeneratedZone();
-  uploadCompletedMeshes();
-
   const int zoneX = static_cast<int>(glm::floor(playerPosition.x / ZONE_SIZE)) * ZONE_SIZE;
   const int zoneZ = static_cast<int>(glm::floor(playerPosition.z / ZONE_SIZE)) * ZONE_SIZE;
   const auto distance = [&playerPosition](glm::ivec2 origin, float size) {
@@ -268,16 +270,25 @@ void Terrain::expandTerrain(const glm::vec3 &playerPosition) {
     if (m_meshingChunks.size() >= maxMeshJobs) break;
     queueVBOWorker(origin);
   }
+  // consume shared completions after scheduling this tick's worker jobs
+  publishGeneratedZone();
+  uploadCompletedMeshes();
 }
 
 void Terrain::draw(int minX, int maxX, int minZ, int maxZ, ShaderProgram *shaderProgram) {
-  for (int x = minX; x < maxX; x += 16) {
-    for (int z = minZ; z < maxZ; z += 16) {
-      if (hasChunkAt(x, z) && getChunkAt(x, z)->elemCount(INDEX) >= 0) {
-        shaderProgram->drawInterleaved(*getChunkAt(x, z));
+  // draw every opaque mesh before any transparent mesh
+  for (bool transparent : {false, true}) {
+    mp_context->glDepthMask(transparent ? GL_FALSE : GL_TRUE);
+    const BufferType indexBuffer = transparent ? TRANSPARENT_INDEX : INDEX;
+    for (int x = minX; x < maxX; x += CHUNK_SIZE) {
+      for (int z = minZ; z < maxZ; z += CHUNK_SIZE) {
+        if (hasChunkAt(x, z) && getChunkAt(x, z)->elemCount(indexBuffer) > 0) {
+          shaderProgram->drawInterleaved(*getChunkAt(x, z), transparent);
+        }
       }
     }
   }
+  mp_context->glDepthMask(GL_TRUE);
 }
 
 void Terrain::CreateTestScene(const glm::vec3 &playerPosition) {

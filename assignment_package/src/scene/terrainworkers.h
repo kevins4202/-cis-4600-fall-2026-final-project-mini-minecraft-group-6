@@ -1,29 +1,9 @@
 #pragma once
 #include "chunk.h"
 #include <QRunnable>
-#include <deque>
 #include <mutex>
 #include <string>
 #include <utility>
-
-// each completion queue owns the mutex protecting its shared results
-template<typename T>
-class TerrainWorkQueue {
-    std::mutex m_mutex;
-    std::deque<T> m_results;
-public:
-    void push(T result) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_results.push_back(std::move(result));
-    }
-    bool tryPop(T &result) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_results.empty()) return false;
-        result = std::move(m_results.front());
-        m_results.pop_front();
-        return true;
-    }
-};
 
 struct ChunkSnapshot {
     glm::ivec2 origin;
@@ -37,25 +17,54 @@ struct ChunkVersion {
 };
 
 struct BlockTypeResult {
+    BlockTypeResult() = default;
+    BlockTypeResult(BlockTypeResult&&) noexcept = default;
+    BlockTypeResult &operator=(BlockTypeResult&&) noexcept = default;
+    BlockTypeResult(const BlockTypeResult&) = delete;
+    BlockTypeResult &operator=(const BlockTypeResult&) = delete;
     glm::ivec2 zone;
     std::vector<uPtr<Chunk>> chunks;
     std::string error;
 };
 
 struct VBOResult {
+    VBOResult() = default;
+    VBOResult(VBOResult&&) noexcept = default;
+    VBOResult &operator=(VBOResult&&) noexcept = default;
+    VBOResult(const VBOResult&) = delete;
+    VBOResult &operator=(const VBOResult&) = delete;
     glm::ivec2 origin;
     std::vector<ChunkVersion> versions;
     Chunk::MeshData mesh;
     std::string error;
 };
 
+// raw pointers and their ownership records are published together under one mutex
+class FilledChunkCollection {
+    std::mutex m_mutex;
+    std::vector<Chunk*> m_filledChunks;
+    std::vector<BlockTypeResult> m_zones;
+public:
+    void push(BlockTypeResult result);
+    bool tryPop(BlockTypeResult &result, std::vector<Chunk*> &filledChunks);
+};
+
+// a separate mutex protects completed opaque and transparent mesh results
+class VBOResultCollection {
+    std::mutex m_mutex;
+    std::vector<VBOResult> m_results;
+public:
+    void push(VBOResult result);
+    bool tryPop(VBOResult &result);
+};
+
 class BlockTypeWorker : public QRunnable {
     glm::ivec2 m_zone;
     OpenGLContext *m_context;
-    TerrainWorkQueue<BlockTypeResult> &m_completed;
+    FilledChunkCollection &m_completed;
 public:
     BlockTypeWorker(glm::ivec2 zone, OpenGLContext *context,
-                    TerrainWorkQueue<BlockTypeResult> &completed);
+                    FilledChunkCollection &completed);
     void run() override;
 };
 
@@ -63,9 +72,9 @@ class VBOWorker : public QRunnable {
     glm::ivec2 m_origin;
     std::vector<ChunkSnapshot> m_snapshots;
     std::vector<ChunkVersion> m_versions;
-    TerrainWorkQueue<VBOResult> &m_completed;
+    VBOResultCollection &m_completed;
 public:
     VBOWorker(glm::ivec2 origin, std::vector<ChunkSnapshot> snapshots,
-              std::vector<ChunkVersion> versions, TerrainWorkQueue<VBOResult> &completed);
+              std::vector<ChunkVersion> versions, VBOResultCollection &completed);
     void run() override;
 };

@@ -212,8 +212,10 @@ void ShaderProgram::draw(Drawable &d) {
     context->printGLErrorLog();
 }
 
-void ShaderProgram::drawInterleaved(Drawable &d) {
-    if(d.elemCount(INDEX) < 0) {
+void ShaderProgram::drawInterleaved(Drawable &d, bool transparent) {
+    const BufferType vertexBuffer = transparent ? TRANSPARENT_INTERLEAVED : INTERLEAVED;
+    const BufferType indexBuffer = transparent ? TRANSPARENT_INDEX : INDEX;
+    if(d.elemCount(indexBuffer) < 0) {
         throw std::invalid_argument(
                     "Attempting to draw a Drawable that has not initialized its count variable! Remember to set it to the length of your index array in create()."
                     );
@@ -221,7 +223,7 @@ void ShaderProgram::drawInterleaved(Drawable &d) {
     useMe();
 
     int handle;
-    if(d.bindBuffer(INTERLEAVED)) {
+    if(d.bindBuffer(vertexBuffer)) {
         GLsizei stride = static_cast<GLsizei>(3 * sizeof(glm::vec4));
 
         if((handle = m_attribs["vs_Pos"]) != -1) {
@@ -240,8 +242,8 @@ void ShaderProgram::drawInterleaved(Drawable &d) {
         }
     }
 
-    d.bindBuffer(INDEX);
-    context->glDrawElements(d.drawMode(), d.elemCount(INDEX), GL_UNSIGNED_INT, 0);
+    d.bindBuffer(indexBuffer);
+    context->glDrawElements(d.drawMode(), d.elemCount(indexBuffer), GL_UNSIGNED_INT, 0);
 
     if (m_attribs["vs_Pos"] != -1) context->glDisableVertexAttribArray(m_attribs["vs_Pos"]);
     if (m_attribs["vs_Nor"] != -1) context->glDisableVertexAttribArray(m_attribs["vs_Nor"]);

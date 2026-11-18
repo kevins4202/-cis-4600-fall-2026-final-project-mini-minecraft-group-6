@@ -9,7 +9,8 @@ enum BufferType : unsigned char {
     INDEX,
     POSITION, NORMAL, COLOR, UV,
     INTERLEAVED,
-    INSTANCED_OFFSET
+    INSTANCED_OFFSET,
+    TRANSPARENT_INDEX, TRANSPARENT_INTERLEAVED
 };
 
 //This defines a class which can be rendered by our shader program.

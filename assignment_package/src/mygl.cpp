@@ -78,6 +78,8 @@ void MyGL::initializeGL()
     // Set a few settings/modes in OpenGL rendering
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     // Set the color with which the screen is filled at the start of each render call.
     glClearColor(0.37f, 0.74f, 1.0f, 1);
 

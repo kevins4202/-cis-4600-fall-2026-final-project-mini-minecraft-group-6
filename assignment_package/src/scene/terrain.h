@@ -49,8 +49,8 @@ private:
   std::unordered_set<int64_t> m_dirtyChunks;
 
   // workers only share these mutex-protected queues with the main thread
-  TerrainWorkQueue<BlockTypeResult> m_completedBlocks;
-  TerrainWorkQueue<VBOResult> m_completedMeshes;
+  FilledChunkCollection m_completedBlocks;
+  VBOResultCollection m_completedMeshes;
   QThreadPool m_workerPool;
 
   void linkChunkNeighbors(Chunk &chunk, int x, int z);

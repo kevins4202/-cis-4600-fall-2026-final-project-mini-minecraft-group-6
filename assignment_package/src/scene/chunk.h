@@ -56,6 +56,8 @@ private:
     std::unordered_map<Direction, Chunk*, EnumHash> m_neighbors;
 
     BlockType getAdjacentBlockAt(int x, int y, int z) const;
+    void bufferMeshPart(const std::vector<glm::vec4> &vertices, const std::vector<GLuint> &indices,
+                        BufferType vertexBuffer, BufferType indexBuffer);
 
 public:
     Chunk(OpenGLContext *context, int x, int z);
@@ -63,8 +65,10 @@ public:
 
     using BlockData = std::array<BlockType, 65536>;
     struct MeshData {
-        std::vector<glm::vec4> vertices;
-        std::vector<GLuint> indices;
+        std::vector<glm::vec4> opaqueVertices;
+        std::vector<GLuint> opaqueIndices;
+        std::vector<glm::vec4> transparentVertices;
+        std::vector<GLuint> transparentIndices;
     };
 
     const BlockData &blockData() const { return m_blocks; }
@@ -74,8 +78,7 @@ public:
     // build mesh data from isolated snapshots without an opengl context
     MeshData buildMeshData() const;
     void createVBOdata() override;
-    void bufferVBOdata(const std::vector<glm::vec4> &vertexData,
-                       const std::vector<GLuint> &indices);
+    void bufferVBOdata(const MeshData &mesh);
     BlockType getLocalBlockAt(unsigned int x, unsigned int y, unsigned int z) const;
     BlockType getLocalBlockAt(int x, int y, int z) const;
     void setLocalBlockAt(unsigned int x, unsigned int y, unsigned int z, BlockType t);

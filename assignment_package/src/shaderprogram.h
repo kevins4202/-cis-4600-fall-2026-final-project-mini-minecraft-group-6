@@ -47,7 +47,7 @@ public:
 
     // Draw the given object to our screen using this ShaderProgram's shaders
     void draw(Drawable &d);
-    void drawInterleaved(Drawable &d);
+    void drawInterleaved(Drawable &d, bool transparent = false);
     void drawInstanced(InstancedDrawable &d);
     // Utility function used in create()
     char* textFileRead(const char*);

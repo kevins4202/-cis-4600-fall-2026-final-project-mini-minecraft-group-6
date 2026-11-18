@@ -1,10 +1,48 @@
 #include "terrainworkers.h"
 #include "terrain.h"
 #include <exception>
+#include <algorithm>
 #include <unordered_map>
 
+void FilledChunkCollection::push(BlockTypeResult result) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_filledChunks.reserve(m_filledChunks.size() + result.chunks.size());
+    m_zones.push_back(std::move(result));
+    for (const auto &chunk : m_zones.back().chunks) m_filledChunks.push_back(chunk.get());
+}
+
+bool FilledChunkCollection::tryPop(BlockTypeResult &result, std::vector<Chunk*> &filledChunks) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_zones.empty()) return false;
+    filledChunks.clear();
+    filledChunks.reserve(m_zones.front().chunks.size());
+    result = std::move(m_zones.front());
+    m_zones.erase(m_zones.begin());
+    for (const auto &chunk : result.chunks) {
+        auto found = std::find(m_filledChunks.begin(), m_filledChunks.end(), chunk.get());
+        if (found != m_filledChunks.end()) {
+            filledChunks.push_back(*found);
+            m_filledChunks.erase(found);
+        }
+    }
+    return true;
+}
+
+void VBOResultCollection::push(VBOResult result) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_results.push_back(std::move(result));
+}
+
+bool VBOResultCollection::tryPop(VBOResult &result) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_results.empty()) return false;
+    result = std::move(m_results.front());
+    m_results.erase(m_results.begin());
+    return true;
+}
+
 BlockTypeWorker::BlockTypeWorker(glm::ivec2 zone, OpenGLContext *context,
-                                 TerrainWorkQueue<BlockTypeResult> &completed)
+                                 FilledChunkCollection &completed)
     : m_zone(zone), m_context(context), m_completed(completed) {}
 
 void BlockTypeWorker::run() {
@@ -28,7 +66,7 @@ void BlockTypeWorker::run() {
 }
 
 VBOWorker::VBOWorker(glm::ivec2 origin, std::vector<ChunkSnapshot> snapshots,
-                     std::vector<ChunkVersion> versions, TerrainWorkQueue<VBOResult> &completed)
+                     std::vector<ChunkVersion> versions, VBOResultCollection &completed)
     : m_origin(origin), m_snapshots(std::move(snapshots)),
       m_versions(std::move(versions)), m_completed(completed) {}
 

@@ -18,6 +18,10 @@ For macOS specifically, I recenter with CGWarpMouseCursorPosition() while keepin
 
 Milestone 2 - Multithreaded Terrain Loading (Kevin Song)
 
-I scan the 5 x 5 generation zones around the player each tick and track completed and pending zones separately to avoid duplicate work. BlockTypeWorkers generate each missing zone's sixteen chunks, and separate VBOWorkers build meshes from snapshots of completed chunks and their neighbors. Both stages use QRunnable jobs on a bounded QThreadPool and return results through separate mutex-protected queues. The main thread connects generated chunks and uploads completed buffers, with a per-frame upload limit to keep gameplay responsive. Revision checks reject meshes made stale by edits or new neighbors, and edited chunks are also remeshed in the background.
+I check the 5 x 5 terrain generation zones around the player each tick, tracking pending and completed zones separately to avoid duplicate work. I use QRunnable jobs on a QThreadPool: BlockTypeWorkers fill each missing zone's sixteen chunks, then VBOWorkers build meshes from snapshots of filled chunks and their neighbors.
 
-Worker tests are in tests/terrain_workers.pro. They check zone generation, shared completion queues, boundary faces, snapshot isolation, error reporting, and shutdown.
+Workers publish filled Chunk pointers with ownership records to one shared collection, and completed mesh results to a separate shared vector. Each mesh result contains four vectors for opaque vertices, opaque indices, transparent vertices, and transparent indices. Each shared collection has its own mutex, with lock guards protecting every read and write. After scheduling workers, the main thread receives completed chunks, connects their neighbors, schedules meshing, and uploads finished buffers using its OpenGL context. Opaque meshes are drawn before transparent meshes.
+
+My main challenges were preventing loading pauses and keeping meshes correct when blocks or neighbors changed during background work. I limited concurrent workers, prioritized nearby chunks, and capped uploads per frame so input, physics, and rendering remain responsive. Revision checks discard stale meshes after edits, and neighboring meshes are rebuilt when new chunks arrive to remove hidden boundary faces.
+
+Worker tests are in tests/terrain_workers.pro. They check shared chunk pointers, zone generation, opaque and transparent mesh data, boundary faces, snapshot isolation, error reporting, and shutdown.

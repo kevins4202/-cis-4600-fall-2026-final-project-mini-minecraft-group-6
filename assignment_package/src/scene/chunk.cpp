@@ -40,7 +40,7 @@ glm::vec4 blockColor(BlockType type) {
   case STONE:
     return glm::vec4(0.5f, 0.5f, 0.5f, 1.f);
   case WATER:
-    return glm::vec4(0.f, 0.f, 0.75f, 1.f);
+    return glm::vec4(0.f, 0.f, 0.75f, 0.65f);
   case SNOW:
     return glm::vec4(1.f, 1.f, 1.f, 1.f);
   default:
@@ -82,14 +82,11 @@ BlockType Chunk::getAdjacentBlockAt(int x, int y, int z) const {
 }
 
 void Chunk::createVBOdata() {
-  MeshData mesh = buildMeshData();
-  bufferVBOdata(mesh.vertices, mesh.indices);
+  bufferVBOdata(buildMeshData());
 }
 
 Chunk::MeshData Chunk::buildMeshData() const {
   MeshData mesh;
-  auto &vertexData = mesh.vertices;
-  auto &indices = mesh.indices;
 
   for (int z = 0; z < 16; ++z) {
     for (int y = 0; y < 256; ++y) {
@@ -99,12 +96,16 @@ Chunk::MeshData Chunk::buildMeshData() const {
           continue;
         }
 
+        const bool transparent = block == WATER;
+        auto &vertexData = transparent ? mesh.transparentVertices : mesh.opaqueVertices;
+        auto &indices = transparent ? mesh.transparentIndices : mesh.opaqueIndices;
         glm::vec4 blockOffset(minX + x, y, minZ + z, 0.f);
         glm::vec4 color = blockColor(block);
 
         for (const FaceData &face : FACE_DATA) {
           glm::ivec3 adjacent = glm::ivec3(x, y, z) + face.neighborOffset;
-          if (getAdjacentBlockAt(adjacent.x, adjacent.y, adjacent.z) != EMPTY) {
+          const BlockType neighbor = getAdjacentBlockAt(adjacent.x, adjacent.y, adjacent.z);
+          if (neighbor != EMPTY && (transparent || neighbor != WATER)) {
             continue;
           }
 
@@ -129,25 +130,24 @@ Chunk::MeshData Chunk::buildMeshData() const {
   return mesh;
 }
 
-void Chunk::bufferVBOdata(const std::vector<glm::vec4> &vertexData,
-                          const std::vector<GLuint> &indices) {
-  indexCounts[INDEX] = static_cast<int>(indices.size());
+void Chunk::bufferVBOdata(const MeshData &mesh) {
+  bufferMeshPart(mesh.opaqueVertices, mesh.opaqueIndices, INTERLEAVED, INDEX);
+  bufferMeshPart(mesh.transparentVertices, mesh.transparentIndices,
+                 TRANSPARENT_INTERLEAVED, TRANSPARENT_INDEX);
+}
 
-  if (!bufGenerated[INDEX]) {
-    generateBuffer(INDEX);
-  }
-  bindBuffer(INDEX);
+void Chunk::bufferMeshPart(const std::vector<glm::vec4> &vertices,
+                           const std::vector<GLuint> &indices,
+                           BufferType vertexBuffer, BufferType indexBuffer) {
+  indexCounts[indexBuffer] = static_cast<int>(indices.size());
+  if (!bufGenerated[indexBuffer]) generateBuffer(indexBuffer);
+  bindBuffer(indexBuffer);
   mp_context->glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                           indices.size() * sizeof(GLuint), indices.data(),
-                           GL_STATIC_DRAW);
-
-  if (!bufGenerated[INTERLEAVED]) {
-    generateBuffer(INTERLEAVED);
-  }
-  bindBuffer(INTERLEAVED);
+                           indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+  if (!bufGenerated[vertexBuffer]) generateBuffer(vertexBuffer);
+  bindBuffer(vertexBuffer);
   mp_context->glBufferData(GL_ARRAY_BUFFER,
-                           vertexData.size() * sizeof(glm::vec4),
-                           vertexData.data(), GL_STATIC_DRAW);
+                           vertices.size() * sizeof(glm::vec4), vertices.data(), GL_STATIC_DRAW);
 }
 
 BlockType Chunk::getLocalBlockAt(unsigned int x, unsigned int y, unsigned int z) const {
